@@ -10,11 +10,13 @@ function deliveryDatabase({
   deliveryScope = "followers",
   activityJson = JSON.stringify({ type: "Create" }),
   blockedRecipient = false,
+  blockedInstance = false,
 }: {
   targets?: string[];
   deliveryScope?: "followers" | "direct";
   activityJson?: string;
   blockedRecipient?: boolean;
+  blockedInstance?: boolean;
   deliveries?: Array<{
     targetInboxUrl: string;
     state: "pending" | "delivered" | "failed";
@@ -44,6 +46,9 @@ function deliveryDatabase({
                 all: async () => ({
                   results: targets.map((targetInboxUrl) => ({
                     targetInboxUrl,
+                    actorUri: "https://remote.example/users/bob",
+                    blockedAt: null,
+                    personallyBlocked: 0,
                   })),
                 }),
               };
@@ -62,6 +67,15 @@ function deliveryDatabase({
             if (sql.startsWith("SELECT 1 FROM federation_actors")) {
               return {
                 first: async () => (blockedRecipient ? { 1: 1 } : null),
+              };
+            }
+            if (sql.startsWith("SELECT domain FROM instance_policies")) {
+              return {
+                all: async () => ({
+                  results: blockedInstance
+                    ? [{ domain: "remote.example" }]
+                    : [],
+                }),
               };
             }
             statements.push({ sql, params });
@@ -222,5 +236,22 @@ describe("federation delivery worker", () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it("does not fan out to followers on a blocked instance", async () => {
+    const { database } = deliveryDatabase({ blockedInstance: true });
+    let sent = false;
+
+    await expect(
+      deliverOutboxEvent(
+        database,
+        { eventId: "event-1", encryptionSecret: "secret" },
+        async () => {
+          sent = true;
+          return new Response(null, { status: 202 });
+        },
+      ),
+    ).resolves.toMatchObject({ delivered: 0, state: "delivered" });
+    expect(sent).toBe(false);
   });
 });

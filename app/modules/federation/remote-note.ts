@@ -1,5 +1,10 @@
 import sanitizeHtml from "sanitize-html";
 
+import {
+  blockedInstanceDomainsForRemoteUris,
+  remoteInstanceDomain,
+} from "@/modules/moderation/instance-policy";
+
 import { isSafeRemoteUrl } from "./remote-url";
 
 type Statement = { sql: string; params: readonly unknown[] };
@@ -255,10 +260,21 @@ export async function listFollowedRemoteNotes(
   database: D1Database,
   localActorId: string,
 ) {
-  return database
+  const notes = await database
     .prepare(followedRemoteNotesQuery)
     .bind(localActorId, localActorId)
     .all<FollowedRemoteNote>();
+  const blockedDomains = await blockedInstanceDomainsForRemoteUris(
+    database,
+    notes.results.map((note) => note.actorUri),
+  );
+  return {
+    ...notes,
+    results: notes.results.filter((note) => {
+      const domain = remoteInstanceDomain(note.actorUri);
+      return domain === null || !blockedDomains.has(domain);
+    }),
+  };
 }
 
 export const remoteNoteQueries = { followedRemoteNotesQuery };

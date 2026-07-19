@@ -43,6 +43,8 @@ describe("notification viewer data", () => {
           createdAt: "2026-07-19T00:00:00.000Z",
           actorHandle: "alice",
           actorName: "Alice",
+          actorUri: null,
+          actorIsLocal: null,
           boardId: "staff",
           boardTitle: "Staff",
           boardVisibility: "private",

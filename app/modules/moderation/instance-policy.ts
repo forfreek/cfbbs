@@ -9,6 +9,8 @@ export type InstancePolicy = {
   updatedAt: string;
 };
 
+type BlockedPolicy = { domain: string };
+
 const domainLabel = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)$/;
 
 export function normalizeInstanceDomain(value: string) {
@@ -36,6 +38,39 @@ export function normalizeInstanceDomain(value: string) {
     throw new Error("Instance domain is invalid.");
   }
   return hostname;
+}
+
+export function remoteInstanceDomain(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:"
+      ? url.hostname.toLowerCase().replace(/\.$/, "")
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function blockedInstanceDomainsForRemoteUris(
+  database: D1Database,
+  remoteUris: readonly (string | null | undefined)[],
+) {
+  const domains = [
+    ...new Set(
+      remoteUris
+        .map((uri) => (uri ? remoteInstanceDomain(uri) : null))
+        .filter((domain): domain is string => domain !== null),
+    ),
+  ];
+  if (domains.length === 0) return new Set<string>();
+  const placeholders = domains.map(() => "?").join(", ");
+  const policies = await database
+    .prepare(
+      `SELECT domain FROM instance_policies WHERE state = 'blocked' AND domain IN (${placeholders})`,
+    )
+    .bind(...domains)
+    .all<BlockedPolicy>();
+  return new Set(policies.results.map((policy) => policy.domain));
 }
 
 export async function setInstancePolicy(

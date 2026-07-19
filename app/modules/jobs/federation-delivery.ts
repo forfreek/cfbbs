@@ -4,6 +4,10 @@ import {
 } from "@/modules/federation/delivery";
 import { isSafeRemoteUrl } from "@/modules/federation/remote-url";
 import { nextRetry } from "@/modules/jobs/retry";
+import {
+  blockedInstanceDomainsForRemoteUris,
+  remoteInstanceDomain,
+} from "@/modules/moderation/instance-policy";
 
 type OutboxEvent = {
   id: string;
@@ -14,7 +18,12 @@ type OutboxEvent = {
   deliveryScope: "followers" | "direct";
 };
 
-type FollowerInbox = { targetInboxUrl: string };
+type FollowerInbox = {
+  targetInboxUrl: string;
+  actorUri: string;
+  blockedAt: string | null;
+  personallyBlocked: number;
+};
 type StoredDelivery = {
   targetInboxUrl: string;
   state: "pending" | "delivered" | "failed";
@@ -71,13 +80,22 @@ async function hasBlockedDirectRecipient(
   const recipients = directActivityRecipients(activityJson);
   if (recipients.length === 0) return false;
   const placeholders = recipients.map(() => "?").join(", ");
-  const actor = await database
-    .prepare(
-      `SELECT 1 FROM federation_actors WHERE is_local = 0 AND uri IN (${placeholders}) AND (blocked_at IS NOT NULL OR EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = federation_actors.id AND user_actor_preferences.state = 'blocked')) LIMIT 1`,
-    )
-    .bind(...recipients, localActorId)
-    .first<{ 1: number }>();
-  return actor != null;
+  const [actor, blockedDomains] = await Promise.all([
+    database
+      .prepare(
+        `SELECT 1 FROM federation_actors WHERE is_local = 0 AND uri IN (${placeholders}) AND (blocked_at IS NOT NULL OR EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = federation_actors.id AND user_actor_preferences.state = 'blocked')) LIMIT 1`,
+      )
+      .bind(...recipients, localActorId)
+      .first<{ 1: number }>(),
+    blockedInstanceDomainsForRemoteUris(database, recipients),
+  ]);
+  return (
+    actor != null ||
+    recipients.some((recipient) => {
+      const domain = remoteInstanceDomain(recipient);
+      return domain !== null && blockedDomains.has(domain);
+    })
+  );
 }
 
 async function cancelBlockedDirectDelivery(
@@ -137,9 +155,9 @@ export async function deliverOutboxEvent(
     event.deliveryScope === "followers"
       ? database
           .prepare(
-            "SELECT DISTINCT COALESCE(NULLIF(TRIM(federation_actors.shared_inbox_url), ''), federation_actors.inbox_url) AS targetInboxUrl FROM federation_follows INNER JOIN federation_actors ON federation_actors.id = federation_follows.follower_actor_id WHERE federation_follows.following_actor_id = ? AND federation_follows.state = 'accepted' AND federation_actors.blocked_at IS NULL",
+            "SELECT DISTINCT COALESCE(NULLIF(TRIM(federation_actors.shared_inbox_url), ''), federation_actors.inbox_url) AS targetInboxUrl, federation_actors.uri AS actorUri, federation_actors.blocked_at AS blockedAt, EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = federation_actors.id AND user_actor_preferences.state = 'blocked') AS personallyBlocked FROM federation_follows INNER JOIN federation_actors ON federation_actors.id = federation_follows.follower_actor_id WHERE federation_follows.following_actor_id = ? AND federation_follows.state = 'accepted'",
           )
-          .bind(event.actorId)
+          .bind(event.actorId, event.actorId)
           .all<FollowerInbox>()
       : Promise.resolve({ results: [] as FollowerInbox[] }),
     database
@@ -149,13 +167,36 @@ export async function deliverOutboxEvent(
       .bind(event.id)
       .all<StoredDelivery>(),
   ]);
+  const blockedFollowerDomains = await blockedInstanceDomainsForRemoteUris(
+    database,
+    followers.results.map((follower) => follower.actorUri),
+  );
+  const blockedFollowerInboxes = new Set(
+    followers.results
+      .filter((follower) => {
+        const domain = remoteInstanceDomain(follower.actorUri);
+        return (
+          follower.blockedAt != null ||
+          follower.personallyBlocked === 1 ||
+          (domain !== null && blockedFollowerDomains.has(domain))
+        );
+      })
+      .map((follower) => follower.targetInboxUrl),
+  );
+  const allowedFollowerInboxes = followers.results
+    .filter((follower) => !blockedFollowerInboxes.has(follower.targetInboxUrl))
+    .map((follower) => follower.targetInboxUrl);
   const existing = new Map(
     deliveries.results.map((delivery) => [delivery.targetInboxUrl, delivery]),
   );
   const targetInboxUrls = [
     ...new Set([
-      ...followers.results.map((follower) => follower.targetInboxUrl),
-      ...deliveries.results.map((delivery) => delivery.targetInboxUrl),
+      ...allowedFollowerInboxes,
+      ...deliveries.results
+        .map((delivery) => delivery.targetInboxUrl)
+        .filter(
+          (targetInboxUrl) => !blockedFollowerInboxes.has(targetInboxUrl),
+        ),
     ]),
   ];
   const now = new Date();

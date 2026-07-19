@@ -1,3 +1,8 @@
+import {
+  blockedInstanceDomainsForRemoteUris,
+  remoteInstanceDomain,
+} from "@/modules/moderation/instance-policy";
+
 export type ForumBoard = {
   id: string;
   parentId: string | null;
@@ -88,10 +93,24 @@ export async function listForumThreadPosts(
   viewerActorId: string | null = null,
 ) {
   const visibility = includePrivate ? "" : "AND posts.visibility = 'public'";
-  return database
+  const posts = await database
     .prepare(
       `SELECT posts.id, posts.thread_id AS threadId, posts.parent_post_id AS parentPostId, posts.author_user_id AS authorUserId, COALESCE(profiles.handle, federation_actors.uri) AS authorHandle, COALESCE(profiles.display_name, federation_actors.name) AS authorName, posts.author_actor_id AS authorActorUri, posts.rendered_html AS renderedHtml, posts.visibility, (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id) AS likeCount, EXISTS(SELECT 1 FROM post_likes WHERE post_likes.post_id = posts.id AND post_likes.actor_id = ?) AS viewerLiked, posts.published_at AS publishedAt, posts.updated_at AS updatedAt FROM posts LEFT JOIN profiles ON profiles.user_id = posts.author_user_id LEFT JOIN federation_actors ON federation_actors.id = posts.author_actor_id WHERE posts.thread_id = ? AND posts.state = 'published' AND (posts.origin = 'local' OR federation_actors.blocked_at IS NULL) AND NOT EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = posts.author_actor_id) ${visibility} ORDER BY posts.published_at ASC, posts.id ASC`,
     )
     .bind(viewerActorId, threadId, viewerActorId)
     .all<ForumPost>();
+  const blockedDomains = await blockedInstanceDomainsForRemoteUris(
+    database,
+    posts.results
+      .filter((post) => post.authorUserId === null)
+      .map((post) => post.authorActorUri),
+  );
+  return {
+    ...posts,
+    results: posts.results.filter((post) => {
+      if (post.authorUserId !== null || !post.authorActorUri) return true;
+      const domain = remoteInstanceDomain(post.authorActorUri);
+      return domain === null || !blockedDomains.has(domain);
+    }),
+  };
 }

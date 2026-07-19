@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  blockedInstanceDomainsForRemoteUris,
   listInstancePolicies,
   normalizeInstanceDomain,
+  remoteInstanceDomain,
   setInstancePolicy,
 } from "@/modules/moderation/instance-policy";
 
@@ -78,5 +80,22 @@ describe("instance policy moderation", () => {
 
     await listInstancePolicies(database);
     expect(statements[0]?.sql).toContain("ORDER BY domain ASC");
+  });
+
+  it("maps remote actor URLs to blocked instance domains", async () => {
+    const { database, statements } = policyDatabase();
+
+    expect(remoteInstanceDomain("https://REMOTE.EXAMPLE/users/bob")).toBe(
+      "remote.example",
+    );
+    expect(remoteInstanceDomain("https://remote.example./users/bob")).toBe(
+      "remote.example",
+    );
+    expect(remoteInstanceDomain("http://remote.example/users/bob")).toBeNull();
+    await blockedInstanceDomainsForRemoteUris(database, [
+      "https://remote.example/users/bob",
+    ]);
+    expect(statements[0]?.sql).toContain("state = 'blocked'");
+    expect(statements[0]?.params).toContain("remote.example");
   });
 });
