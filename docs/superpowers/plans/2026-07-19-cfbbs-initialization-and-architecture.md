@@ -190,7 +190,7 @@ Invariants:
 
 **Files:** `app/modules/forum/threads/*`, `app/modules/forum/posts/*`, `app/modules/forum/markdown/*`, `app/modules/forum/notifications/*`, `app/routes/boards.*`, `app/routes/threads.*`, `tests/integration/forum/*`
 
-- [ ] Implement public/private board listings and cursor-based topic navigation.
+- [x] Implement public/private board listings and cursor-based topic navigation.
 - [x] Implement topic creation, chronological replies, `inReplyTo`, editing, soft deletion, locking, pinning, and revision history.
 - [ ] Parse Markdown server-side and sanitize links and HTML against script execution, unsafe protocols, and event-handler attributes.
 - [ ] Implement idempotent likes and unread notifications for replies, follows, and likes.
