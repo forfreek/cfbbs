@@ -40,6 +40,7 @@ import {
 import { recordRemoteLike, undoRemoteLike } from "./likes";
 import { isRemoteActorQuarantined } from "@/modules/moderation/remote-quarantine";
 import { isSafeRemoteUrl } from "./remote-url";
+import { createBoundedRemoteDocumentLoader } from "./remote-fetch";
 import {
   deleteRemoteNote,
   storeRemoteNote,
@@ -80,6 +81,13 @@ type LocalLikeTarget = {
 };
 
 class RejectedInboundActivity extends Error {}
+
+function remoteDocumentLoaders(context: InboxContext<FederationEnvironment>) {
+  return {
+    documentLoader: createBoundedRemoteDocumentLoader(),
+    contextLoader: context.contextLoader,
+  };
+}
 
 function actorName(value: unknown) {
   if (typeof value === "string") return value;
@@ -237,7 +245,8 @@ async function resolveRemoteFollower(
   follow: Follow,
 ): Promise<RemoteFollower> {
   const activityActorUri = follow.actorId?.href;
-  const remoteActor = await follow.getActor(context);
+  const loaders = remoteDocumentLoaders(context);
+  const remoteActor = await follow.getActor(loaders);
   if (
     !activityActorUri ||
     !remoteActor?.id ||
@@ -251,7 +260,7 @@ async function resolveRemoteFollower(
   if (!inboxUrl) {
     throw new RejectedInboundActivity("Follow actor has no inbox.");
   }
-  const key = await remoteActor.getPublicKey(context);
+  const key = await remoteActor.getPublicKey(loaders);
   if (!key?.publicKey) {
     throw new RejectedInboundActivity("Follow actor has no usable public key.");
   }
@@ -503,7 +512,7 @@ async function processInboundRemoteNoteActivity(
     if (!(await loadKnownRemoteActor(context.data.DB, actorUri))) {
       throw new RejectedInboundActivity("Remote actor is unknown.");
     }
-    const note = await activity.getObject(context);
+    const note = await activity.getObject(remoteDocumentLoaders(context));
     const noteUri = note?.id?.href;
     if (
       !(note instanceof Note) ||
