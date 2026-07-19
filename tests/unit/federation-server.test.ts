@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Follow } from "@fedify/vocab";
+import { Follow, Undo } from "@fedify/vocab";
 
 import {
   generateFederationSigningKeyPair,
@@ -8,6 +8,7 @@ import {
 import {
   createWorkerFederation,
   processInboundFollow,
+  processInboundUndo,
 } from "@/modules/federation/server";
 
 function federationEnvironment() {
@@ -189,4 +190,132 @@ describe("Fedify inbox gateway", () => {
     ).toBe(true);
     expect(localPair.publicKeyPem).toMatch(/BEGIN PUBLIC KEY/);
   });
+
+  it("marks the matching accepted remote Follow as undone", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const database = inboxDatabase(statements);
+    const remoteActor = "https://remote.example/users/bob";
+    const undo = new Undo({
+      id: new URL("https://remote.example/activities/undo-follow-1"),
+      actor: new URL(remoteActor),
+      object: new URL("https://remote.example/activities/follow-1"),
+    });
+
+    await processInboundUndo(inboxContext(database), undo);
+
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes(
+          "UPDATE federation_follows SET state = 'undone'",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("state = 'processed'"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects an Undo that does not reference an active remote Follow", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const database = inboxDatabase(statements, { followChanges: 0 });
+    const undo = new Undo({
+      id: new URL("https://remote.example/activities/undo-follow-1"),
+      actor: new URL("https://remote.example/users/bob"),
+      object: new URL("https://remote.example/activities/follow-1"),
+    });
+
+    await processInboundUndo(inboxContext(database), undo);
+
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes(
+          "UPDATE federation_follows SET state = 'undone'",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("state = 'rejected'"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects an Undo from a blocked remote actor", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const database = inboxDatabase(statements, { blocked: true });
+    const remoteActor = "https://remote.example/users/bob";
+    const undo = new Undo({
+      id: new URL("https://remote.example/activities/undo-follow-1"),
+      actor: new URL(remoteActor),
+      object: new Follow({
+        id: new URL("https://remote.example/activities/follow-1"),
+        actor: new URL(remoteActor),
+        object: new URL("https://bbs.example.test/users/alice"),
+      }),
+    });
+
+    await processInboundUndo(inboxContext(database), undo);
+
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes(
+          "UPDATE federation_follows SET state = 'undone'",
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("state = 'rejected'"),
+      ),
+    ).toBe(true);
+  });
 });
+
+function inboxDatabase(
+  statements: Array<{ sql: string; params: unknown[] }>,
+  options: { blocked?: boolean; followChanges?: number } = {},
+) {
+  return {
+    prepare(sql: string) {
+      return {
+        bind(...params: unknown[]) {
+          statements.push({ sql, params });
+          return {
+            first: async () => {
+              if (sql.includes("SELECT federation_actors.id")) {
+                return { id: "user-1", handle: "alice" };
+              }
+              if (sql.includes("SELECT state FROM instance_policies")) {
+                return options.blocked ? { state: "blocked" } : null;
+              }
+              if (sql.includes("SELECT blocked_at")) return null;
+              return null;
+            },
+            run: async () => ({
+              meta: {
+                changes: sql.includes("UPDATE federation_follows")
+                  ? (options.followChanges ?? 1)
+                  : 1,
+              },
+            }),
+          };
+        },
+      };
+    },
+  } as unknown as D1Database;
+}
+
+function inboxContext(database: D1Database) {
+  return {
+    recipient: "alice",
+    data: {
+      APP_ORIGIN: "https://bbs.example.test",
+      FEDERATION_KEY_ENCRYPTION_SECRET: "encryption-secret",
+      DB: database,
+      FEDIFY_KV: {} as KVNamespace,
+      FEDERATION_QUEUE: {} as Queue,
+    },
+  } as never;
+}

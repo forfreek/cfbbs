@@ -4,6 +4,7 @@ import {
   acceptRemoteFollow,
   acceptedRemoteFollowStatements,
   createFollowAcceptActivity,
+  undoRemoteFollow,
   type AcceptedRemoteFollow,
 } from "@/modules/federation/follows";
 
@@ -80,5 +81,35 @@ describe("accepted remote follows", () => {
     await acceptRemoteFollow(database, input);
     expect(batches).toHaveLength(1);
     expect(batches[0]).toHaveLength(4);
+  });
+
+  it("only marks the exact accepted relationship as undone", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const database = {
+      prepare(sql: string) {
+        return {
+          bind(...params: unknown[]) {
+            statements.push({ sql, params });
+            return { run: async () => ({ meta: { changes: 1 } }) };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await expect(
+      undoRemoteFollow(database, {
+        followActivityId: input.followActivityId,
+        followerActorUri: input.follower.uri,
+        localActorId: input.localActorId,
+      }),
+    ).resolves.toBe(true);
+    expect(statements[0]?.sql).toContain("state = 'accepted'");
+    expect(statements[0]?.params).toEqual(
+      expect.arrayContaining([
+        input.followActivityId,
+        input.follower.uri,
+        input.localActorId,
+      ]),
+    );
   });
 });

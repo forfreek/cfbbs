@@ -4,9 +4,13 @@ import {
   type Federation,
   type InboxContext,
 } from "@fedify/fedify";
-import { CryptographicKey, Follow, Person } from "@fedify/vocab";
+import { CryptographicKey, Follow, Person, Undo } from "@fedify/vocab";
 
-import { acceptRemoteFollow, type RemoteFollower } from "./follows";
+import {
+  acceptRemoteFollow,
+  type RemoteFollower,
+  undoRemoteFollow,
+} from "./follows";
 import {
   claimInboxActivity,
   completeInboxActivity,
@@ -37,7 +41,7 @@ type LocalActorProfile = LocalActor & {
 type InstancePolicy = { state: "allowed" | "blocked" | "limited" };
 type ExistingRemoteActor = { blockedAt: string | null };
 
-class RejectedInboundFollow extends Error {}
+class RejectedInboundActivity extends Error {}
 
 function actorName(value: unknown) {
   if (typeof value === "string") return value;
@@ -112,17 +116,17 @@ async function resolveRemoteFollower(
     !remoteActor?.id ||
     remoteActor.id.href !== activityActorUri
   ) {
-    throw new RejectedInboundFollow(
+    throw new RejectedInboundActivity(
       "Follow actor does not match its resolved actor document.",
     );
   }
   const inboxUrl = remoteActor.inboxId?.href;
   if (!inboxUrl) {
-    throw new RejectedInboundFollow("Follow actor has no inbox.");
+    throw new RejectedInboundActivity("Follow actor has no inbox.");
   }
   const key = await remoteActor.getPublicKey(context);
   if (!key?.publicKey) {
-    throw new RejectedInboundFollow("Follow actor has no usable public key.");
+    throw new RejectedInboundActivity("Follow actor has no usable public key.");
   }
   return {
     uri: activityActorUri,
@@ -159,7 +163,7 @@ export async function processInboundFollow(
 
   try {
     if (await isBlockedRemoteActor(context.data.DB, actorUri)) {
-      throw new RejectedInboundFollow("Remote actor or instance is blocked.");
+      throw new RejectedInboundActivity("Remote actor or instance is blocked.");
     }
     const follower = await resolveRemoteFollower(context, follow);
     await acceptRemoteFollow(context.data.DB, {
@@ -172,7 +176,53 @@ export async function processInboundFollow(
     });
     await completeInboxActivity(context.data.DB, activityId);
   } catch (error) {
-    if (error instanceof RejectedInboundFollow) {
+    if (error instanceof RejectedInboundActivity) {
+      await rejectInboxActivity(context.data.DB, activityId, error.message);
+      return;
+    }
+    await releaseInboxActivity(context.data.DB, activityId);
+    throw error;
+  }
+}
+
+export async function processInboundUndo(
+  context: InboxContext<FederationEnvironment>,
+  undo: Undo,
+) {
+  const activityId = undo.id?.href;
+  const actorUri = undo.actorId?.href;
+  const followActivityId = undo.objectId?.href;
+  const recipient = context.recipient;
+  if (!activityId || !actorUri || !followActivityId || !recipient) return;
+  if (!validateInboxActivity({ activityId, actorUri }).ok) return;
+  if (!validateInboxActivity({ activityId: followActivityId, actorUri }).ok) {
+    return;
+  }
+
+  const localActor = await loadLocalActor(context.data.DB, recipient);
+  if (!localActor) return;
+  const claimed = await claimInboxActivity(context.data.DB, {
+    activityId,
+    actorUri,
+  });
+  if (!claimed) return;
+
+  try {
+    if (await isBlockedRemoteActor(context.data.DB, actorUri)) {
+      throw new RejectedInboundActivity("Remote actor or instance is blocked.");
+    }
+    if (
+      !(await undoRemoteFollow(context.data.DB, {
+        followActivityId,
+        followerActorUri: actorUri,
+        localActorId: localActor.id,
+      }))
+    ) {
+      throw new RejectedInboundActivity("Follow relationship is not active.");
+    }
+    await completeInboxActivity(context.data.DB, activityId);
+  } catch (error) {
+    if (error instanceof RejectedInboundActivity) {
       await rejectInboxActivity(context.data.DB, activityId, error.message);
       return;
     }
@@ -225,7 +275,8 @@ builder
 builder
   .setInboxListeners("/users/{identifier}/inbox")
   .withIdempotency("global")
-  .on(Follow, processInboundFollow);
+  .on(Follow, processInboundFollow)
+  .on(Undo, processInboundUndo);
 
 export async function createWorkerFederation(
   environment: FederationEnvironment,

@@ -129,3 +129,25 @@ export async function acceptRemoteFollow(
     ),
   );
 }
+
+export async function undoRemoteFollow(
+  database: D1Database,
+  input: {
+    followActivityId: string;
+    followerActorUri: string;
+    localActorId: string;
+  },
+) {
+  const result = await database
+    .prepare(
+      "UPDATE federation_follows SET state = 'undone', updated_at = ? WHERE follow_activity_id = ? AND follower_actor_id = ? AND following_actor_id = ? AND state = 'accepted'",
+    )
+    .bind(
+      new Date().toISOString(),
+      input.followActivityId,
+      input.followerActorUri,
+      input.localActorId,
+    )
+    .run();
+  return result.meta.changes === 1;
+}
