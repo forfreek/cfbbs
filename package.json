@@ -1,0 +1,40 @@
+{
+	"name": "cfbbs",
+	"description": "A Cloudflare Workers-native federated BBS.",
+	"license": "AGPL-3.0-or-later",
+	"dependencies": {
+		"isbot": "5.1.32",
+		"react": "19.2.1",
+		"react-dom": "19.2.1",
+		"react-router": "7.9.6"
+	},
+	"devDependencies": {
+		"@cloudflare/vite-plugin": "1.15.3",
+		"@cloudflare/workers-types": "^5.20260718.1",
+		"@react-router/dev": "7.9.6",
+		"@tailwindcss/vite": "4.1.17",
+		"@types/node": "24.10.1",
+		"@types/react": "19.2.7",
+		"@types/react-dom": "19.2.3",
+		"tailwindcss": "4.1.17",
+		"typescript": "5.9.3",
+		"vite": "^7.0.0",
+		"vite-tsconfig-paths": "5.1.4",
+		"wrangler": "4.88.0"
+	},
+	"private": true,
+	"scripts": {
+		"build": "react-router build",
+		"cf-typegen": "wrangler types && react-router typegen",
+		"check": "tsc && react-router build && wrangler deploy --dry-run",
+		"deploy": "wrangler deploy",
+		"dev": "react-router dev",
+		"preview": "pnpm build && vite preview",
+		"typecheck": "pnpm run cf-typegen && tsc -b"
+	},
+	"type": "module",
+	"packageManager": "pnpm@11.15.0",
+	"engines": {
+		"node": "22.23.1"
+	}
+}
