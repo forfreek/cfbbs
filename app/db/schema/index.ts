@@ -510,7 +510,16 @@ export const federationOutboxEvents = sqliteTable(
     }).notNull(),
     aggregateId: text("aggregate_id").notNull(),
     activityType: text("activity_type", {
-      enum: ["Create", "Update", "Delete", "Follow", "Undo", "Like"],
+      enum: [
+        "Create",
+        "Update",
+        "Delete",
+        "Follow",
+        "Accept",
+        "Reject",
+        "Undo",
+        "Like",
+      ],
     }).notNull(),
     activityJson: text("activity_json").notNull(),
     deliveryScope: text("delivery_scope", {

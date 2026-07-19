@@ -19,6 +19,9 @@ importers:
       "@fedify/testing":
         specifier: ^2.3.2
         version: 2.3.2(@fedify/fedify@2.3.2)
+      "@fedify/vocab":
+        specifier: 2.3.2
+        version: 2.3.2
       "@fontsource-variable/geist":
         specifier: ^5.2.9
         version: 5.2.9

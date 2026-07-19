@@ -1,5 +1,6 @@
 import { createRequestHandler } from "react-router";
 
+import { createWorkerFederation } from "@/modules/federation/server";
 import { processFederationQueue } from "@/modules/jobs/federation-queue";
 import { enqueuePendingOutboxEvents } from "@/modules/jobs/federation-outbox";
 
@@ -18,9 +19,18 @@ const requestHandler = createRequestHandler(
 );
 
 export default {
-  fetch(request, env, ctx) {
-    return requestHandler(request, {
-      cloudflare: { env, ctx },
+  async fetch(request, env, ctx) {
+    const federation = await createWorkerFederation(env);
+    return federation.fetch(request, {
+      contextData: env,
+      onNotFound: (unmatchedRequest) =>
+        requestHandler(unmatchedRequest, {
+          cloudflare: { env, ctx },
+        }),
+      onNotAcceptable: (unacceptableRequest) =>
+        requestHandler(unacceptableRequest, {
+          cloudflare: { env, ctx },
+        }),
     });
   },
   async queue(batch, env) {

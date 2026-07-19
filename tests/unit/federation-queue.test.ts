@@ -24,6 +24,8 @@ function queueMessage(body: unknown) {
 function queueEnvironment() {
   return {
     DB: {} as D1Database,
+    FEDIFY_KV: {} as KVNamespace,
+    FEDERATION_QUEUE: {} as Queue,
     FEDERATION_KEY_ENCRYPTION_SECRET: "encryption-secret",
   };
 }

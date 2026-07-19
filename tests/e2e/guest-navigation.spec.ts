@@ -6,7 +6,7 @@ test("renders the public home page and opens registration without runtime errors
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page).toHaveTitle("CFBBS");
   await expect(page.getByRole("heading", { name: "全部主题" })).toBeVisible();

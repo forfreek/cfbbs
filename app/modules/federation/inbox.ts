@@ -64,3 +64,16 @@ export async function rejectInboxActivity(
     .run();
   return result.meta.changes === 1;
 }
+
+export async function releaseInboxActivity(
+  database: D1Database,
+  activityId: string,
+) {
+  const result = await database
+    .prepare(
+      "DELETE FROM federation_inbox_receipts WHERE activity_id = ? AND state = 'received'",
+    )
+    .bind(activityId)
+    .run();
+  return result.meta.changes === 1;
+}

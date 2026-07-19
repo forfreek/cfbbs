@@ -5,6 +5,7 @@ import {
   encryptPrivateKey,
   generateFederationSigningKeyPair,
   importFederationPrivateKey,
+  importFederationPublicKey,
 } from "@/modules/federation/keys";
 
 describe("local federation signing keys", () => {
@@ -52,5 +53,13 @@ describe("local federation signing keys", () => {
     expect(privateKey.type).toBe("private");
     expect(privateKey.usages).toEqual(["sign"]);
     expect(privateKey.extractable).toBe(true);
+  });
+
+  it("imports the matching PEM public key for signature verification", async () => {
+    const pair = await generateFederationSigningKeyPair(secret);
+    const publicKey = await importFederationPublicKey(pair.publicKeyPem);
+
+    expect(publicKey.type).toBe("public");
+    expect(publicKey.usages).toEqual(["verify"]);
   });
 });

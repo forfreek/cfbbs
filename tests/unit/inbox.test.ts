@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   claimInboxActivity,
   completeInboxActivity,
+  releaseInboxActivity,
   rejectInboxActivity,
   validateInboxActivity,
 } from "@/modules/federation/inbox";
@@ -83,5 +84,14 @@ describe("federation inbox receipts", () => {
     ).resolves.toBe(true);
     expect(processed.statements[0].sql).toContain("state = 'received'");
     expect(rejected.statements[0].params).toContain("bad signature");
+  });
+
+  it("releases a transiently failed receipt for a Queue retry", async () => {
+    const released = receiptDatabase(1);
+
+    await expect(
+      releaseInboxActivity(released.database, activity.activityId),
+    ).resolves.toBe(true);
+    expect(released.statements[0].sql).toContain("state = 'received'");
   });
 });

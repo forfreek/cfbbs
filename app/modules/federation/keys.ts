@@ -33,6 +33,15 @@ function pem(label: string, value: ArrayBuffer) {
   return `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----`;
 }
 
+function fromPem(value: string, label: string) {
+  const pattern = new RegExp(
+    `^-----BEGIN ${label}-----\\s*([A-Za-z0-9+/=\\s]+)-----END ${label}-----$`,
+  );
+  const match = value.trim().match(pattern);
+  if (!match) throw new Error(`Invalid ${label} PEM.`);
+  return fromBase64(match[1].replace(/\s/g, ""));
+}
+
 async function encryptionKey(
   secret: string,
   usages: KeyUsage[],
@@ -101,6 +110,24 @@ export async function importFederationPrivateKey(
     true,
     ["sign"],
   );
+}
+
+export async function importFederationPublicKey(publicKeyPem: string) {
+  try {
+    return await crypto.subtle.importKey(
+      "spki",
+      fromPem(publicKeyPem, "PUBLIC KEY"),
+      signingAlgorithm,
+      true,
+      ["verify"],
+    );
+  } catch {
+    throw new Error("Invalid federation public key.");
+  }
+}
+
+export async function exportFederationPublicKeyPem(publicKey: CryptoKey) {
+  return pem("PUBLIC KEY", await crypto.subtle.exportKey("spki", publicKey));
 }
 
 export async function generateFederationSigningKeyPair(secret: string) {
