@@ -10,6 +10,8 @@ export default [
   route("users/:handle/followers", "routes/users.$handle.followers.tsx"),
   route("users/:handle/following", "routes/users.$handle.following.tsx"),
   route("objects/:postId", "routes/objects.$postId.tsx"),
+  route("boards/:boardId", "routes/boards.$boardId.tsx"),
+  route("threads/:threadId", "routes/threads.$threadId.tsx"),
   route("settings/profile", "routes/settings.profile.tsx"),
   route(".well-known/webfinger", "routes/webfinger.ts"),
   route(".well-known/nodeinfo", "routes/nodeinfo.well-known.ts"),

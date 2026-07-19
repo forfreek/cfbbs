@@ -33,7 +33,7 @@ function BoardGroup({
           <li key={item.id}>
             <Link
               className="text-muted-foreground hover:bg-muted hover:text-foreground flex items-center gap-2 rounded-md px-2 py-1.5 text-sm"
-              to="/"
+              to={`/boards/${item.id}`}
               style={{ paddingLeft: `${0.5 + item.depth * 0.75}rem` }}
             >
               <Folder className="size-3.5" />
@@ -180,7 +180,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               >
                 <Link
                   className="truncate font-medium hover:text-blue-700"
-                  to="/"
+                  to={`/threads/${topic.id}`}
                 >
                   {topic.title}
                   {index === 0 ? (
@@ -257,7 +257,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     <br />
                     <Link
                       className="line-clamp-1 text-blue-700 hover:underline"
-                      to="/"
+                      to={`/threads/${topic.id}`}
                     >
                       {topic.title}
                     </Link>
