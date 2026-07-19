@@ -6,5 +6,9 @@ export async function softDeletePost(database: D1Database, postId: string) {
     )
     .bind(now, now, postId)
     .run();
+  await database
+    .prepare("DELETE FROM local_posts_fts WHERE post_id = ?")
+    .bind(postId)
+    .run();
   return result.meta.changes > 0;
 }

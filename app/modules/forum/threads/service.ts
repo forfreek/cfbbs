@@ -73,6 +73,15 @@ export async function createThread(database: D1Database, input: NewThread) {
         "UPDATE threads SET first_post_id = ?, post_count = 1, last_activity_at = ?, updated_at = ? WHERE id = ?",
       )
       .bind(input.postId, now, now, input.threadId),
+    ...(input.visibility === "public"
+      ? [
+          database
+            .prepare(
+              "INSERT INTO local_posts_fts (post_id, thread_id, title, body) VALUES (?, ?, ?, ?)",
+            )
+            .bind(input.postId, input.threadId, input.title, input.markdown),
+        ]
+      : []),
     ...(outbox ? [outbox] : []),
   ]);
 }

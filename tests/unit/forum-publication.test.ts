@@ -78,7 +78,7 @@ describe("public post federation publication", () => {
     });
 
     expect(batches).toHaveLength(1);
-    expect(batches[0]).toHaveLength(5);
+    expect(batches[0]).toHaveLength(6);
     const outbox = batches[0].find((statement) =>
       statement.sql.includes("INSERT INTO federation_outbox_events"),
     );
@@ -94,6 +94,12 @@ describe("public post federation publication", () => {
       statement.sql.includes("INSERT INTO posts"),
     );
     expect(post?.params).toContain("https://bbs.example.test/objects/post-1");
+    const searchIndex = batches[0].find((statement) =>
+      statement.sql.includes("INSERT INTO local_posts_fts"),
+    );
+    expect(searchIndex?.params).toEqual(
+      expect.arrayContaining(["post-1", "thread-1", "Hello"]),
+    );
   });
 
   it("rejects a public thread before any write when its federation event is absent", async () => {

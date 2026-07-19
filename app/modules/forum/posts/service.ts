@@ -76,12 +76,21 @@ export async function createReply(database: D1Database, input: NewReply) {
         "UPDATE threads SET post_count = post_count + 1, last_activity_at = ?, updated_at = ? WHERE id = ?",
       )
       .bind(now, now, input.threadId),
+    ...(input.visibility === "public"
+      ? [
+          database
+            .prepare(
+              "INSERT INTO local_posts_fts (post_id, thread_id, title, body) SELECT ?, ?, title, ? FROM threads WHERE id = ?",
+            )
+            .bind(input.postId, input.threadId, input.markdown, input.threadId),
+        ]
+      : []),
     ...(thread.firstPostAuthorUserId &&
     thread.firstPostAuthorUserId !== input.authorUserId
       ? [
           database
             .prepare(
-              "INSERT INTO notifications (id, recipient_user_id, actor_id, type, thread_id, post_id, read_at, created_at) VALUES (?, ?, ?, 'reply', ?, ?, NULL, ?)",
+              "INSERT INTO notifications (id, recipient_user_id, actor_id, type, thread_id, post_id, read_at, created_at) SELECT ?, ?, ?, 'reply', ?, ?, NULL, ? WHERE NOT EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = ?)",
             )
             .bind(
               crypto.randomUUID(),
@@ -90,6 +99,8 @@ export async function createReply(database: D1Database, input: NewReply) {
               input.threadId,
               input.postId,
               now,
+              thread.firstPostAuthorUserId,
+              input.authorUserId,
             ),
         ]
       : []),

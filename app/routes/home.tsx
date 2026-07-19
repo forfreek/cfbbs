@@ -96,7 +96,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </Link>
             <Link
               className="flex items-center gap-1.5 text-slate-600 hover:text-slate-950"
-              to="/"
+              to="/search"
             >
               <Search className="size-4" />
               Search
