@@ -19,7 +19,7 @@ describe("local federation actors", () => {
       "2026-07-19T00:00:00.000Z",
     );
 
-    expect(statements).toHaveLength(2);
+    expect(statements).toHaveLength(3);
     expect(statements[0].sql).toContain("INSERT INTO profiles");
     expect(statements[0].params).toContain(
       '{"version":1,"ciphertext":"secret"}',
@@ -35,6 +35,13 @@ describe("local federation actors", () => {
         "-----BEGIN PUBLIC KEY-----\\npublic\\n-----END PUBLIC KEY-----",
       ]),
     );
+    expect(statements[2]).toMatchObject({
+      sql: expect.stringContaining("INSERT OR IGNORE INTO group_members"),
+      params: expect.arrayContaining([
+        "00000000-0000-0000-0000-000000000003",
+        "user-1",
+      ]),
+    });
   });
 
   it("rejects invalid handles before creating any statements", () => {

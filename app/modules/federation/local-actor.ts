@@ -1,6 +1,7 @@
 import { actorId } from "./identifiers";
 import { generateFederationSigningKeyPair } from "./keys";
 import { validateHandle } from "@/modules/identity/handle";
+import { registeredUsersGroupId } from "@/modules/permissions/system-groups";
 
 export type NewLocalActor = {
   userId: string;
@@ -54,6 +55,10 @@ export function localActorInsertStatements(
         now,
         now,
       ],
+    },
+    {
+      sql: "INSERT OR IGNORE INTO group_members (group_id, user_id, created_at) VALUES (?, ?, ?)",
+      params: [registeredUsersGroupId, input.userId, now],
     },
   ];
 }
