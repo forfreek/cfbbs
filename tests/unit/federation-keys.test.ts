@@ -4,6 +4,7 @@ import {
   decryptPrivateKey,
   encryptPrivateKey,
   generateFederationSigningKeyPair,
+  importFederationPrivateKey,
 } from "@/modules/federation/keys";
 
 describe("local federation signing keys", () => {
@@ -39,5 +40,17 @@ describe("local federation signing keys", () => {
     await expect(
       decryptPrivateKey(pair.privateKeyEncrypted, secret),
     ).resolves.toBeInstanceOf(ArrayBuffer);
+  });
+
+  it("imports a decrypted private key for Fedify's signing runtime", async () => {
+    const pair = await generateFederationSigningKeyPair(secret);
+    const privateKey = await importFederationPrivateKey(
+      pair.privateKeyEncrypted,
+      secret,
+    );
+
+    expect(privateKey.type).toBe("private");
+    expect(privateKey.usages).toEqual(["sign"]);
+    expect(privateKey.extractable).toBe(true);
   });
 });

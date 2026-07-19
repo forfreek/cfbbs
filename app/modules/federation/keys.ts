@@ -90,6 +90,19 @@ export async function decryptPrivateKey(value: string, secret: string) {
   }
 }
 
+export async function importFederationPrivateKey(
+  encryptedPrivateKey: string,
+  secret: string,
+) {
+  return crypto.subtle.importKey(
+    "pkcs8",
+    await decryptPrivateKey(encryptedPrivateKey, secret),
+    signingAlgorithm,
+    true,
+    ["sign"],
+  );
+}
+
 export async function generateFederationSigningKeyPair(secret: string) {
   const pair = (await crypto.subtle.generateKey(signingAlgorithm, true, [
     "sign",
