@@ -83,6 +83,7 @@ export function createFollowAcceptActivity(input: AcceptedRemoteFollow) {
     type: "Accept",
     actor: localActorUri,
     object: input.followActivityId,
+    to: input.follower.uri,
   };
 }
 

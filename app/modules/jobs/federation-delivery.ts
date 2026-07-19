@@ -49,6 +49,55 @@ function isRetryDue(nextAttemptAt: string, now: Date) {
   return Number.isNaN(retryAt.getTime()) || retryAt <= now;
 }
 
+function directActivityRecipients(activityJson: string) {
+  try {
+    const activity: unknown = JSON.parse(activityJson);
+    if (typeof activity !== "object" || activity === null) return [];
+    const recipient = (activity as { to?: unknown }).to;
+    const values = Array.isArray(recipient) ? recipient : [recipient];
+    return values.filter(
+      (value): value is string => typeof value === "string" && value.length > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function hasBlockedDirectRecipient(
+  database: D1Database,
+  activityJson: string,
+) {
+  const recipients = directActivityRecipients(activityJson);
+  if (recipients.length === 0) return false;
+  const placeholders = recipients.map(() => "?").join(", ");
+  const actor = await database
+    .prepare(
+      `SELECT 1 FROM federation_actors WHERE is_local = 0 AND blocked_at IS NOT NULL AND uri IN (${placeholders}) LIMIT 1`,
+    )
+    .bind(...recipients)
+    .first<{ 1: number }>();
+  return actor != null;
+}
+
+async function cancelBlockedDirectDelivery(
+  database: D1Database,
+  eventId: string,
+) {
+  const now = new Date().toISOString();
+  await database.batch([
+    database
+      .prepare(
+        "UPDATE federation_deliveries SET state = 'failed', next_attempt_at = ?, last_error = 'Delivery cancelled because the remote actor is blocked.', updated_at = ? WHERE outbox_event_id = ? AND state = 'pending'",
+      )
+      .bind(now, now, eventId),
+    database
+      .prepare(
+        "UPDATE federation_outbox_events SET state = 'failed', updated_at = ? WHERE id = ?",
+      )
+      .bind(now, eventId),
+  ]);
+}
+
 export async function deliverOutboxEvent(
   database: D1Database,
   input: { eventId: string; encryptionSecret: string },
@@ -63,6 +112,20 @@ export async function deliverOutboxEvent(
   if (!event) return null;
   if (!event.encryptedPrivateKey) {
     throw new Error("Local federation actor has no encrypted private key.");
+  }
+  if (
+    event.deliveryScope === "direct" &&
+    (await hasBlockedDirectRecipient(database, event.activityJson))
+  ) {
+    await cancelBlockedDirectDelivery(database, event.id);
+    return {
+      delivered: 0,
+      retrying: 0,
+      failed: 1,
+      deferred: 0,
+      skipped: 0,
+      state: "failed",
+    };
   }
 
   const [followers, deliveries] = await Promise.all([

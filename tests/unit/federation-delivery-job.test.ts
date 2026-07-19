@@ -8,9 +8,13 @@ function deliveryDatabase({
   targets = ["https://remote.example/inbox"],
   deliveries = [],
   deliveryScope = "followers",
+  activityJson = JSON.stringify({ type: "Create" }),
+  blockedRecipient = false,
 }: {
   targets?: string[];
   deliveryScope?: "followers" | "direct";
+  activityJson?: string;
+  blockedRecipient?: boolean;
   deliveries?: Array<{
     targetInboxUrl: string;
     state: "pending" | "delivered" | "failed";
@@ -22,7 +26,7 @@ function deliveryDatabase({
   const event = {
     id: "event-1",
     actorId: "user-1",
-    activityJson: JSON.stringify({ type: "Create" }),
+    activityJson,
     actorUri: "https://bbs.example.test/users/alice",
     encryptedPrivateKey: "encrypted-key",
     deliveryScope,
@@ -55,10 +59,18 @@ function deliveryDatabase({
                 }),
               };
             }
+            if (sql.startsWith("SELECT 1 FROM federation_actors")) {
+              return {
+                first: async () => (blockedRecipient ? { 1: 1 } : null),
+              };
+            }
             statements.push({ sql, params });
             return { run: async () => ({ meta: { changes: 1 } }) };
           },
         };
+      },
+      async batch() {
+        return [];
       },
     } as unknown as D1Database,
     statements,
@@ -178,5 +190,37 @@ describe("federation delivery worker", () => {
       ),
     ).resolves.toMatchObject({ delivered: 1, state: "delivered" });
     expect(sentTo).toEqual(["https://remote.example/inbox"]);
+  });
+
+  it("cancels an undelivered direct activity for a blocked remote actor", async () => {
+    const { database, statements } = deliveryDatabase({
+      targets: [],
+      deliveryScope: "direct",
+      blockedRecipient: true,
+      activityJson: JSON.stringify({
+        type: "Like",
+        to: "https://remote.example/users/bob",
+      }),
+    });
+    let sent = false;
+
+    await expect(
+      deliverOutboxEvent(
+        database,
+        { eventId: "event-1", encryptionSecret: "secret" },
+        async () => {
+          sent = true;
+          return new Response(null, { status: 202 });
+        },
+      ),
+    ).resolves.toMatchObject({ failed: 1, state: "failed" });
+    expect(sent).toBe(false);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes(
+          "Delivery cancelled because the remote actor is blocked.",
+        ),
+      ),
+    ).toBe(true);
   });
 });

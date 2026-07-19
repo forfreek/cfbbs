@@ -54,6 +54,7 @@ describe("accepted remote follows", () => {
       type: "Accept",
       actor: "https://bbs.example.test/users/alice",
       object: "https://remote.example/activities/follow-1",
+      to: "https://remote.example/users/bob",
     });
   });
 

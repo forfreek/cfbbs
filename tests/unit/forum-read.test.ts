@@ -48,4 +48,12 @@ describe("forum read privacy", () => {
     expect(queries[0]).toContain("LEFT JOIN federation_actors");
     expect(queries[0]).toContain("posts.author_actor_id AS authorActorUri");
   });
+
+  it("does not render replies written by a blocked remote actor", async () => {
+    const { database, queries } = readDatabase();
+
+    await listForumThreadPosts(database, "thread-1", false);
+    expect(queries[0]).toContain("posts.origin = 'local'");
+    expect(queries[0]).toContain("federation_actors.blocked_at IS NULL");
+  });
 });
