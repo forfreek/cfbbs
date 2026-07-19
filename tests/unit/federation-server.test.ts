@@ -4,6 +4,7 @@ import {
   Create,
   Delete,
   Follow,
+  Like,
   Note,
   PUBLIC_COLLECTION,
   Reject,
@@ -22,6 +23,7 @@ import {
   processInboundDelete,
   processInboundFollow,
   processInboundFollowReject,
+  processInboundLike,
   processInboundUndo,
   processInboundUpdate,
 } from "@/modules/federation/server";
@@ -234,7 +236,10 @@ describe("Fedify inbox gateway", () => {
 
   it("rejects an Undo that does not reference an active remote Follow", async () => {
     const statements: Array<{ sql: string; params: unknown[] }> = [];
-    const database = inboxDatabase(statements, { followChanges: 0 });
+    const database = inboxDatabase(statements, {
+      followChanges: 0,
+      likeChanges: 0,
+    });
     const undo = new Undo({
       id: new URL("https://remote.example/activities/undo-follow-1"),
       actor: new URL("https://remote.example/users/bob"),
@@ -319,7 +324,10 @@ describe("Fedify inbox gateway", () => {
 
   it("rejects a remote Reject that does not match a pending outbound Follow", async () => {
     const statements: Array<{ sql: string; params: unknown[] }> = [];
-    const database = inboxDatabase(statements, { followChanges: 0 });
+    const database = inboxDatabase(statements, {
+      followChanges: 0,
+      likeChanges: 1,
+    });
     const reject = new Reject({
       id: new URL("https://remote.example/activities/reject-follow-1"),
       actor: new URL("https://remote.example/users/bob"),
@@ -500,11 +508,69 @@ describe("Fedify inbox gateway", () => {
       ),
     ).toBe(true);
   });
+
+  it("records a signed remote Like for its local public target", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const batches: unknown[][] = [];
+    const database = remoteNoteDatabase(statements, batches, {
+      likeTarget: true,
+    });
+    const activity = new Like({
+      id: new URL("https://remote.example/activities/like-1"),
+      actor: new URL("https://remote.example/users/bob"),
+      object: new URL("https://bbs.example.test/objects/post-1"),
+    });
+
+    await processInboundLike(inboxContext(database), activity);
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(2);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("INSERT OR IGNORE INTO post_likes"),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("state = 'processed'"),
+      ),
+    ).toBe(true);
+  });
+
+  it("uses Undo to remove a matching remote Like when no Follow matches", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const database = inboxDatabase(statements, {
+      followChanges: 0,
+      likeChanges: 1,
+    });
+    const undo = new Undo({
+      id: new URL("https://remote.example/activities/undo-like-1"),
+      actor: new URL("https://remote.example/users/bob"),
+      object: new URL("https://remote.example/activities/like-1"),
+    });
+
+    await processInboundUndo(inboxContext(database), undo);
+
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("DELETE FROM post_likes"),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("state = 'processed'"),
+      ),
+    ).toBe(true);
+  });
 });
 
 function inboxDatabase(
   statements: Array<{ sql: string; params: unknown[] }>,
-  options: { blocked?: boolean; followChanges?: number } = {},
+  options: {
+    blocked?: boolean;
+    followChanges?: number;
+    likeChanges?: number;
+  } = {},
 ) {
   return {
     prepare(sql: string) {
@@ -526,7 +592,9 @@ function inboxDatabase(
               meta: {
                 changes: sql.includes("UPDATE federation_follows")
                   ? (options.followChanges ?? 1)
-                  : 1,
+                  : sql.includes("DELETE FROM post_likes")
+                    ? (options.likeChanges ?? 0)
+                    : 1,
               },
             }),
           };
@@ -552,7 +620,11 @@ function inboxContext(database: D1Database) {
 function remoteNoteDatabase(
   statements: Array<{ sql: string; params: unknown[] }>,
   batches: unknown[][],
-  options: { existing?: "reply" | "standalone"; replyTarget?: boolean } = {},
+  options: {
+    existing?: "reply" | "standalone";
+    likeTarget?: boolean;
+    replyTarget?: boolean;
+  } = {},
 ) {
   return {
     prepare(sql: string) {
@@ -583,6 +655,15 @@ function remoteNoteDatabase(
                   };
                 }
                 return options.existing === "standalone" ? {} : null;
+              }
+              if (sql.includes("posts.author_user_id AS authorUserId")) {
+                return options.likeTarget
+                  ? {
+                      postId: "post-1",
+                      threadId: "thread-1",
+                      authorUserId: "user-1",
+                    }
+                  : null;
               }
               if (sql.includes("SELECT posts.id AS postId")) {
                 return options.replyTarget

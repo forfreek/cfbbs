@@ -10,6 +10,7 @@ import {
   CryptographicKey,
   Delete,
   Follow,
+  Like,
   Note,
   Person,
   PUBLIC_COLLECTION,
@@ -36,6 +37,7 @@ import {
   importFederationPrivateKey,
   importFederationPublicKey,
 } from "./keys";
+import { recordRemoteLike, undoRemoteLike } from "./likes";
 import { isSafeRemoteUrl } from "./remote-url";
 import {
   deleteRemoteNote,
@@ -69,6 +71,11 @@ type ExistingRemoteNote = {
   postId: string | null;
   threadId: string | null;
   parentPostId: string | null;
+};
+type LocalLikeTarget = {
+  postId: string;
+  threadId: string;
+  authorUserId: string;
 };
 
 class RejectedInboundActivity extends Error {}
@@ -211,6 +218,18 @@ async function loadExistingRemoteNote(
     .first<ExistingRemoteNote>();
 }
 
+async function loadLocalLikeTarget(
+  database: D1Database,
+  federationObjectId: string,
+) {
+  return database
+    .prepare(
+      "SELECT posts.id AS postId, posts.thread_id AS threadId, posts.author_user_id AS authorUserId FROM posts INNER JOIN threads ON threads.id = posts.thread_id INNER JOIN boards ON boards.id = threads.board_id WHERE posts.federation_object_id = ? AND posts.origin = 'local' AND posts.state = 'published' AND posts.visibility = 'public' AND boards.visibility = 'public' AND NOT EXISTS (SELECT 1 FROM board_closure AS path INNER JOIN boards AS ancestor ON ancestor.id = path.ancestor_id WHERE path.descendant_id = boards.id AND ancestor.visibility != 'public') LIMIT 1",
+    )
+    .bind(federationObjectId)
+    .first<LocalLikeTarget>();
+}
+
 async function resolveRemoteFollower(
   context: InboxContext<FederationEnvironment>,
   follow: Follow,
@@ -317,15 +336,72 @@ export async function processInboundUndo(
     if (await isBlockedRemoteActor(context.data.DB, actorUri)) {
       throw new RejectedInboundActivity("Remote actor or instance is blocked.");
     }
-    if (
-      !(await undoRemoteFollow(context.data.DB, {
-        followActivityId,
-        followerActorUri: actorUri,
-        localActorId: localActor.id,
-      }))
-    ) {
-      throw new RejectedInboundActivity("Follow relationship is not active.");
+    const undoneFollow = await undoRemoteFollow(context.data.DB, {
+      followActivityId,
+      followerActorUri: actorUri,
+      localActorId: localActor.id,
+    });
+    if (!undoneFollow) {
+      const undoneLike = await undoRemoteLike(context.data.DB, {
+        activityId: followActivityId,
+        actorUri,
+      });
+      if (!undoneLike) {
+        throw new RejectedInboundActivity(
+          "Follow relationship or Like activity is not active.",
+        );
+      }
     }
+    await completeInboxActivity(context.data.DB, activityId);
+  } catch (error) {
+    if (error instanceof RejectedInboundActivity) {
+      await rejectInboxActivity(context.data.DB, activityId, error.message);
+      return;
+    }
+    await releaseInboxActivity(context.data.DB, activityId);
+    throw error;
+  }
+}
+
+export async function processInboundLike(
+  context: InboxContext<FederationEnvironment>,
+  like: Like,
+) {
+  const activityId = like.id?.href;
+  const actorUri = like.actorId?.href;
+  const objectUri = like.objectId?.href;
+  const recipient = context.recipient;
+  if (!activityId || !actorUri || !objectUri || !recipient) return;
+  if (!validateInboxActivity({ activityId, actorUri }).ok) return;
+
+  const localActor = await loadLocalActor(context.data.DB, recipient);
+  if (!localActor) return;
+  const claimed = await claimInboxActivity(context.data.DB, {
+    activityId,
+    actorUri,
+  });
+  if (!claimed) return;
+
+  try {
+    if (await isBlockedRemoteActor(context.data.DB, actorUri)) {
+      throw new RejectedInboundActivity("Remote actor or instance is blocked.");
+    }
+    if (new URL(objectUri).origin !== new URL(context.data.APP_ORIGIN).origin) {
+      throw new RejectedInboundActivity("Like must target this instance.");
+    }
+    const target = await loadLocalLikeTarget(context.data.DB, objectUri);
+    if (!target || target.authorUserId !== localActor.id) {
+      throw new RejectedInboundActivity(
+        "Like does not target this inbox owner.",
+      );
+    }
+    await recordRemoteLike(context.data.DB, {
+      activityId,
+      actorUri,
+      postId: target.postId,
+      threadId: target.threadId,
+      recipientUserId: target.authorUserId,
+    });
     await completeInboxActivity(context.data.DB, activityId);
   } catch (error) {
     if (error instanceof RejectedInboundActivity) {
@@ -632,7 +708,8 @@ builder
   .on(Reject, processInboundFollowReject)
   .on(Create, processInboundCreate)
   .on(Update, processInboundUpdate)
-  .on(Delete, processInboundDelete);
+  .on(Delete, processInboundDelete)
+  .on(Like, processInboundLike);
 
 export async function createWorkerFederation(
   environment: FederationEnvironment,
