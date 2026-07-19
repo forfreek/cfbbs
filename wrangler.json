@@ -4,11 +4,83 @@
   "main": "./workers/app.ts",
   "compatibility_date": "2025-10-08",
   "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cfbbs-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "FEDIFY_KV",
+      "id": "00000000000000000000000000000000"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "FEDERATION_QUEUE",
+        "queue": "cfbbs-local-federation"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "cfbbs-local-federation",
+        "dead_letter_queue": "cfbbs-local-federation-dlq"
+      }
+    ]
+  },
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  },
   "observability": {
     "enabled": true
   },
   "upload_source_maps": true,
   "vars": {
+    "APP_ORIGIN": "http://127.0.0.1:5173",
     "VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare"
+  },
+  "env": {
+    "test": {
+      "name": "cfbbs-test",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "cfbbs-test-db",
+          "database_id": "00000000-0000-0000-0000-000000000001",
+          "migrations_dir": "drizzle"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "FEDIFY_KV",
+          "id": "00000000000000000000000000000001"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "FEDERATION_QUEUE",
+            "queue": "cfbbs-test-federation"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "cfbbs-test-federation",
+            "dead_letter_queue": "cfbbs-test-federation-dlq"
+          }
+        ]
+      },
+      "triggers": {
+        "crons": ["0 3 * * *"]
+      },
+      "vars": {
+        "APP_ORIGIN": "https://bbs-test.example.invalid",
+        "VALUE_FROM_CLOUDFLARE": "Hello from the CFBBS test environment"
+      }
+    }
   }
 }
