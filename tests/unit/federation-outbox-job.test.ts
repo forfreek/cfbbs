@@ -14,7 +14,7 @@ function pendingDatabase(ids: string[]) {
     prepare(sql: string) {
       return {
         bind(...params: unknown[]) {
-          if (sql.startsWith("SELECT id FROM federation_outbox_events")) {
+          if (sql.startsWith("SELECT federation_outbox_events.id")) {
             return {
               all: async () => ({ results: ids.map((id) => ({ id })) }),
             };

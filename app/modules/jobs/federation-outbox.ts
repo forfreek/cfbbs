@@ -27,11 +27,12 @@ export async function enqueuePendingOutboxEvents(
   queue: Queue<OutboxQueueMessage>,
   limit = defaultBatchSize,
 ) {
+  const now = new Date().toISOString();
   const events = await database
     .prepare(
-      "SELECT id FROM federation_outbox_events WHERE state = 'pending' ORDER BY created_at ASC, id ASC LIMIT ?",
+      "SELECT federation_outbox_events.id FROM federation_outbox_events WHERE federation_outbox_events.state = 'pending' AND (NOT EXISTS (SELECT 1 FROM federation_deliveries WHERE federation_deliveries.outbox_event_id = federation_outbox_events.id) OR EXISTS (SELECT 1 FROM federation_deliveries WHERE federation_deliveries.outbox_event_id = federation_outbox_events.id AND federation_deliveries.state = 'pending' AND federation_deliveries.next_attempt_at <= ?)) ORDER BY federation_outbox_events.created_at ASC, federation_outbox_events.id ASC LIMIT ?",
     )
-    .bind(outboxBatchSize(limit))
+    .bind(now, outboxBatchSize(limit))
     .all<PendingOutboxEvent>();
   if (events.results.length === 0) return 0;
 
@@ -42,7 +43,6 @@ export async function enqueuePendingOutboxEvents(
     })),
   );
 
-  const now = new Date().toISOString();
   await database.batch(
     events.results.map((event) =>
       database

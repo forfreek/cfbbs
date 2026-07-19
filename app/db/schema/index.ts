@@ -491,6 +491,10 @@ export const federationDeliveries = sqliteTable(
       table.nextAttemptAt,
     ),
     index("federation_deliveries_outbox_index").on(table.outboxEventId),
+    uniqueIndex("federation_deliveries_target_unique").on(
+      table.outboxEventId,
+      table.targetInboxUrl,
+    ),
   ],
 );
 
