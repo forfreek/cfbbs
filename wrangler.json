@@ -28,6 +28,7 @@
     "consumers": [
       {
         "queue": "cfbbs-local-federation",
+        "max_retries": 5,
         "dead_letter_queue": "cfbbs-local-federation-dlq"
       }
     ]
@@ -70,6 +71,7 @@
         "consumers": [
           {
             "queue": "cfbbs-test-federation",
+            "max_retries": 5,
             "dead_letter_queue": "cfbbs-test-federation-dlq"
           }
         ]

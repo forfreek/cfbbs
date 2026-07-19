@@ -1,5 +1,8 @@
 import { createRequestHandler } from "react-router";
 
+import { processFederationQueue } from "@/modules/jobs/federation-queue";
+import { enqueuePendingOutboxEvents } from "@/modules/jobs/federation-outbox";
+
 declare module "react-router" {
   export interface AppLoadContext {
     cloudflare: {
@@ -19,5 +22,11 @@ export default {
     return requestHandler(request, {
       cloudflare: { env, ctx },
     });
+  },
+  async queue(batch, env) {
+    await processFederationQueue(batch, env);
+  },
+  scheduled(_controller, env, ctx) {
+    ctx.waitUntil(enqueuePendingOutboxEvents(env.DB, env.FEDERATION_QUEUE));
   },
 } satisfies ExportedHandler<Env>;
