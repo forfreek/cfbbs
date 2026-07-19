@@ -4,6 +4,7 @@ import { createWorkerFederation } from "@/modules/federation/server";
 import { processFederationQueue } from "@/modules/jobs/federation-queue";
 import { enqueuePendingOutboxEvents } from "@/modules/jobs/federation-outbox";
 import { purgeExpiredRemoteObjects } from "@/modules/jobs/remote-retention";
+import { purgeExpiredRemoteActorQuarantines } from "@/modules/moderation/remote-quarantine";
 
 declare module "react-router" {
   export interface AppLoadContext {
@@ -42,6 +43,7 @@ export default {
       Promise.all([
         enqueuePendingOutboxEvents(env.DB, env.FEDERATION_QUEUE),
         purgeExpiredRemoteObjects(env.DB),
+        purgeExpiredRemoteActorQuarantines(env.DB),
       ]),
     );
   },

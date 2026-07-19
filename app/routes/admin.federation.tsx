@@ -14,6 +14,10 @@ import {
   setInstancePolicy,
 } from "@/modules/moderation/instance-policy";
 import { listReports, resolveReport } from "@/modules/moderation/reports";
+import {
+  clearRemoteActorQuarantine,
+  listRemoteActorQuarantines,
+} from "@/modules/moderation/remote-quarantine";
 import { getSession } from "@/modules/identity/auth.server";
 import { authorizeDatabase } from "@/modules/permissions/authorization.server";
 
@@ -55,13 +59,16 @@ function isInstancePolicyState(value: string): value is InstancePolicyState {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const access = await administrationAccess(request, context.cloudflare.env);
-  const [policies, actors, diagnostics, reports, auditLogs] = await Promise.all(
-    [
+  const [policies, actors, quarantines, diagnostics, reports, auditLogs] =
+    await Promise.all([
       access.canManageFederation
         ? listInstancePolicies(context.cloudflare.env.DB)
         : Promise.resolve({ results: [] }),
       access.canManageFederation
         ? listModeratableRemoteActors(context.cloudflare.env.DB)
+        : Promise.resolve({ results: [] }),
+      access.canManageFederation
+        ? listRemoteActorQuarantines(context.cloudflare.env.DB)
         : Promise.resolve({ results: [] }),
       access.canManageFederation
         ? listFederationDeliveryDiagnostics(context.cloudflare.env.DB)
@@ -72,12 +79,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       access.canViewAudit
         ? listAuditLogs(context.cloudflare.env.DB)
         : Promise.resolve({ results: [] }),
-    ],
-  );
+    ]);
   return {
     ...access,
     policies: policies.results,
     actors: actors.results,
+    quarantines: quarantines.results,
     diagnostics: diagnostics.results,
     reports: reports.results,
     auditLogs: auditLogs.results,
@@ -120,6 +127,15 @@ export async function action({ request, context }: Route.ActionArgs) {
       } else {
         await unblockRemoteActor(context.cloudflare.env.DB, input);
       }
+    } else if (intent === "clear-quarantine") {
+      if (!access.canManageFederation) {
+        throw new Response("Forbidden", { status: 403 });
+      }
+      await clearRemoteActorQuarantine(context.cloudflare.env.DB, {
+        actorUri: String(form.get("actorUri") ?? ""),
+        moderatorUserId: actorUserId,
+        auditId: crypto.randomUUID(),
+      });
     } else if (intent === "resolve-report" || intent === "dismiss-report") {
       if (!access.canManageReports) {
         throw new Response("Forbidden", { status: 403 });
@@ -237,6 +253,67 @@ export default function FederationAdministration({
                     <tr>
                       <td className="py-4 text-slate-500" colSpan={4}>
                         尚未配置实例策略。
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="mt-6 rounded-lg border p-5">
+            <h2 className="text-lg font-semibold">自动隔离</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              异常速率或重复拒绝会触发 24 小时隔离；可在确认后提前解除。
+            </p>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b text-slate-500">
+                  <tr>
+                    <th className="py-2 pr-4">账号</th>
+                    <th className="py-2 pr-4">原因</th>
+                    <th className="py-2 pr-4">到期</th>
+                    <th className="py-2">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loaderData.quarantines.map((quarantine) => (
+                    <tr
+                      key={quarantine.actorUri}
+                      className="border-b last:border-0"
+                    >
+                      <td className="max-w-xs truncate py-3 pr-4">
+                        {quarantine.actorUri}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-600">
+                        {quarantine.reason}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-500">
+                        {timestamp(quarantine.expiresAt)}
+                      </td>
+                      <td className="py-3">
+                        <Form method="post">
+                          <input
+                            type="hidden"
+                            name="intent"
+                            value="clear-quarantine"
+                          />
+                          <input
+                            type="hidden"
+                            name="actorUri"
+                            value={quarantine.actorUri}
+                          />
+                          <button className="text-sm text-blue-700 hover:underline">
+                            解除隔离
+                          </button>
+                        </Form>
+                      </td>
+                    </tr>
+                  ))}
+                  {loaderData.quarantines.length === 0 ? (
+                    <tr>
+                      <td className="py-4 text-slate-500" colSpan={4}>
+                        当前没有自动隔离账号。
                       </td>
                     </tr>
                   ) : null}

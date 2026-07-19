@@ -460,6 +460,21 @@ export const federationInboxReceipts = sqliteTable(
   ],
 );
 
+export const federationActorQuarantines = sqliteTable(
+  "federation_actor_quarantines",
+  {
+    actorUri: text("actor_uri").primaryKey(),
+    reason: text("reason").notNull(),
+    quarantinedAt: text("quarantined_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("federation_actor_quarantines_expiry_index").on(table.expiresAt),
+  ],
+);
+
 export const federationFollows = sqliteTable(
   "federation_follows",
   {

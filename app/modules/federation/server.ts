@@ -38,6 +38,7 @@ import {
   importFederationPublicKey,
 } from "./keys";
 import { recordRemoteLike, undoRemoteLike } from "./likes";
+import { isRemoteActorQuarantined } from "@/modules/moderation/remote-quarantine";
 import { isSafeRemoteUrl } from "./remote-url";
 import {
   deleteRemoteNote,
@@ -156,7 +157,7 @@ function federationEncryptionSecret(environment: FederationEnvironment) {
 
 async function isBlockedRemoteActor(database: D1Database, actorUri: string) {
   const domain = new URL(actorUri).hostname.toLowerCase();
-  const [policy, actor] = await Promise.all([
+  const [policy, actor, quarantined] = await Promise.all([
     database
       .prepare("SELECT state FROM instance_policies WHERE domain = ? LIMIT 1")
       .bind(domain)
@@ -167,8 +168,9 @@ async function isBlockedRemoteActor(database: D1Database, actorUri: string) {
       )
       .bind(actorUri)
       .first<ExistingRemoteActor>(),
+    isRemoteActorQuarantined(database, actorUri),
   ]);
-  return policy?.state === "blocked" || actor?.blockedAt != null;
+  return policy?.state === "blocked" || actor?.blockedAt != null || quarantined;
 }
 
 async function loadFollowedRemoteActor(

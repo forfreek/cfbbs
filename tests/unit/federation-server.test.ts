@@ -157,6 +157,12 @@ describe("Fedify inbox gateway", () => {
             if (sql.includes("SELECT blocked_at")) {
               return { first: async () => null };
             }
+            if (
+              sql.includes("federation_actor_quarantines") ||
+              sql.includes("COUNT(*) AS count")
+            ) {
+              return { first: async () => null };
+            }
             return { run: async () => ({ meta: { changes: 1 } }) };
           },
         };
