@@ -8,6 +8,13 @@
       "when": 1784463193825,
       "tag": "0000_burly_la_nuit",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1784463797817,
+      "tag": "0001_premium_baron_strucker",
+      "breakpoints": true
     }
   ]
 }

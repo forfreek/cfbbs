@@ -6,6 +6,10 @@ describe("database schema contract", () => {
   it("exports the tables required by the local and federated forum domains", () => {
     expect(Object.keys(schema)).toEqual(
       expect.arrayContaining([
+        "authUsers",
+        "authSessions",
+        "authAccounts",
+        "authVerifications",
         "profiles",
         "boards",
         "boardClosure",

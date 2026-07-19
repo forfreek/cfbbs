@@ -271,4 +271,10 @@ CREATE TABLE `threads` (
 	FOREIGN KEY (`board_id`) REFERENCES `boards`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `threads_board_activity_index` ON `threads` (`board_id`,`is_pinned`,`last_activity_at`);
+CREATE INDEX `threads_board_activity_index` ON `threads` (`board_id`,`is_pinned`,`last_activity_at`);--> statement-breakpoint
+CREATE VIRTUAL TABLE `local_posts_fts` USING fts5(
+	`post_id` UNINDEXED,
+	`thread_id` UNINDEXED,
+	`title`,
+	`body`
+);

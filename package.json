@@ -3,6 +3,7 @@
   "description": "A Cloudflare Workers-native federated BBS.",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.6.23",
     "@fedify/cfworkers": "^2.3.2",
     "@fedify/fedify": "^2.3.2",
     "@fedify/testing": "^2.3.2",

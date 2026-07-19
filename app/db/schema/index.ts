@@ -1,4 +1,5 @@
 import {
+  type AnySQLiteColumn,
   index,
   integer,
   primaryKey,
@@ -7,10 +8,96 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+export const authUsers = sqliteTable(
+  "user",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    emailVerified: integer("email_verified", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    image: text("image"),
+    username: text("username"),
+    displayUsername: text("display_username"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("auth_users_email_unique").on(table.email),
+    uniqueIndex("auth_users_username_unique").on(table.username),
+  ],
+);
+
+export const authSessions = sqliteTable(
+  "session",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: text("expires_at").notNull(),
+    token: text("token").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.id),
+  },
+  (table) => [
+    uniqueIndex("auth_sessions_token_unique").on(table.token),
+    index("auth_sessions_user_index").on(table.userId),
+  ],
+);
+
+export const authAccounts = sqliteTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: text("access_token_expires_at"),
+    refreshTokenExpiresAt: text("refresh_token_expires_at"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("auth_accounts_provider_account_unique").on(
+      table.providerId,
+      table.accountId,
+    ),
+    index("auth_accounts_user_index").on(table.userId),
+  ],
+);
+
+export const authVerifications = sqliteTable(
+  "verification",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at"),
+    updatedAt: text("updated_at"),
+  },
+  (table) => [
+    index("auth_verifications_identifier_index").on(table.identifier),
+  ],
+);
+
 export const profiles = sqliteTable(
   "profiles",
   {
-    userId: text("user_id").primaryKey(),
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => authUsers.id),
     handle: text("handle").notNull(),
     displayName: text("display_name").notNull(),
     bio: text("bio").notNull().default(""),
@@ -26,7 +113,7 @@ export const boards = sqliteTable(
   "boards",
   {
     id: text("id").primaryKey(),
-    parentId: text("parent_id").references(() => boards.id),
+    parentId: text("parent_id").references((): AnySQLiteColumn => boards.id),
     slug: text("slug").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
@@ -154,7 +241,9 @@ export const posts = sqliteTable(
     threadId: text("thread_id")
       .notNull()
       .references(() => threads.id),
-    parentPostId: text("parent_post_id").references(() => posts.id),
+    parentPostId: text("parent_post_id").references(
+      (): AnySQLiteColumn => posts.id,
+    ),
     authorUserId: text("author_user_id"),
     authorActorId: text("author_actor_id"),
     origin: text("origin", { enum: ["local", "remote"] }).notNull(),
