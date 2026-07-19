@@ -130,7 +130,11 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
 
       <ol className="mt-8 space-y-6">
         {posts.map((post) => (
-          <li key={post.id} className="rounded-lg border p-5">
+          <li
+            id={`post-${post.id}`}
+            key={post.id}
+            className="rounded-lg border p-5"
+          >
             <p className="text-sm text-slate-500">
               {post.authorActorUri ? (
                 <a className="hover:underline" href={post.authorActorUri}>
@@ -160,15 +164,37 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
               </p>
             ) : null}
             {session ? (
-              <Form
-                method="post"
-                action={`/posts/${post.id}/like`}
-                className="mt-4"
-              >
-                <button className="text-sm text-slate-600 hover:text-blue-700">
-                  {post.viewerLiked ? "取消点赞" : "点赞"}（{post.likeCount}）
-                </button>
-              </Form>
+              <div className="mt-4 flex items-start gap-4">
+                <Form method="post" action={`/posts/${post.id}/like`}>
+                  <button className="text-sm text-slate-600 hover:text-blue-700">
+                    {post.viewerLiked ? "取消点赞" : "点赞"}（{post.likeCount}）
+                  </button>
+                </Form>
+                <details className="text-sm text-slate-500">
+                  <summary className="cursor-pointer hover:text-slate-900">
+                    举报
+                  </summary>
+                  <Form
+                    method="post"
+                    action={`/posts/${post.id}/report`}
+                    className="mt-3 grid w-72 gap-2"
+                  >
+                    <label className="grid gap-1 text-xs">
+                      原因
+                      <textarea
+                        required
+                        name="reason"
+                        maxLength={2000}
+                        rows={3}
+                        className="rounded-md border px-2 py-1.5 text-sm"
+                      />
+                    </label>
+                    <button className="w-fit rounded-md border px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                      提交举报
+                    </button>
+                  </Form>
+                </details>
+              </div>
             ) : (
               <p className="mt-4 text-xs text-slate-500">
                 点赞 {post.likeCount}
