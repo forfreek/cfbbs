@@ -2,9 +2,10 @@
 
 CFBBS is a Cloudflare Workers-native, ActivityPub-capable BBS.
 
-The current repository contains the React Router SSR and Cloudflare Workers
-foundation. Forum features, D1 schema, authentication, permissions, and
-ActivityPub federation are implemented in later milestones documented in
+The repository includes the React Router SSR Worker, local forum core,
+hierarchical permissions, moderation controls, and ActivityPub protocol work.
+The implementation status and remaining remote-interoperability prerequisites
+are recorded in
 [`docs/superpowers/plans/2026-07-19-cfbbs-initialization-and-architecture.md`](docs/superpowers/plans/2026-07-19-cfbbs-initialization-and-architecture.md).
 
 ## Requirements
@@ -17,6 +18,8 @@ ActivityPub federation are implemented in later milestones documented in
 ```bash
 corepack enable
 pnpm install
+pnpm db:migrate:local
+pnpm db:seed
 pnpm dev
 ```
 
@@ -26,11 +29,13 @@ The local SSR development server listens on `http://localhost:5173` by default.
 
 ```bash
 pnpm typecheck
+pnpm test:integration
 pnpm build
+pnpm test:e2e
 ```
 
 No Cloudflare account or remote resource is required for these initialization checks.
 
 ## License
 
-AGPL-3.0-or-later. The full license text will be added before the first public release.
+AGPL-3.0-or-later. See [LICENSE](LICENSE).

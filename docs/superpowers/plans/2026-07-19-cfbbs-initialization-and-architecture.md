@@ -112,38 +112,38 @@ Invariants:
 
 **Files:** `.node-version`, `.npmrc`, `package.json`, `pnpm-lock.yaml`, `.gitignore`, `LICENSE`, `README.md`
 
-- [ ] Verify `node --version` is `v22.23.1` in the login shell.
-- [ ] Run `corepack enable` and activate `pnpm@11.15.0`.
-- [ ] Add a project `.npmrc` containing `registry=https://registry.npmjs.org/`; do not modify `/root/.npmrc`.
-- [ ] Generate the Cloudflare React Router TypeScript scaffold in a temporary directory with `pnpm dlx create-cloudflare@2.70.12 cfbbs --framework=react-router --lang=ts --no-deploy --no-git`, then merge it into `/disk/cfbbs` while preserving `docs/`.
-- [ ] Initialize Git locally and add the AGPL-3.0 license. Do not create a remote or push.
-- [ ] Set `packageManager` to `pnpm@11.15.0` and add scripts: `dev`, `build`, `typecheck`, `lint`, `format:check`, `test`, `test:integration`, `test:e2e`, `db:generate`, `db:migrate:local`, `db:seed`, and aggregate `check`.
-- [ ] Run `pnpm install` and commit the generated lockfile.
-- [ ] Commit with `chore: initialize Cloudflare Workers project`.
+- [x] Verify `node --version` is `v22.23.1` in the login shell.
+- [x] Run `corepack enable` and activate `pnpm@11.15.0`.
+- [x] Add a project `.npmrc` containing `registry=https://registry.npmjs.org/`; do not modify `/root/.npmrc`.
+- [x] Generate the Cloudflare React Router TypeScript scaffold in a temporary directory with `pnpm dlx create-cloudflare@2.70.12 cfbbs --framework=react-router --lang=ts --no-deploy --no-git`, then merge it into `/disk/cfbbs` while preserving `docs/`.
+- [x] Initialize Git locally and add the AGPL-3.0 license. Do not create a remote or push.
+- [x] Set `packageManager` to `pnpm@11.15.0` and add scripts: `dev`, `build`, `typecheck`, `lint`, `format:check`, `test`, `test:integration`, `test:e2e`, `db:generate`, `db:migrate:local`, `db:seed`, and aggregate `check`.
+- [x] Run `pnpm install` and commit the generated lockfile.
+- [x] Commit with `chore: initialize Cloudflare Workers project`.
 
 ### Task 2: Add quality, UI, and test foundations
 
 **Files:** `eslint.config.js`, `.prettierrc`, `vitest.config.ts`, `playwright.config.ts`, `components.json`, `app/styles/app.css`, `.github/workflows/ci.yml`
 
-- [ ] Install Tailwind CSS, shadcn/ui prerequisites, Drizzle, Better Auth, Fedify, Zod, Markdown parsing/sanitization, Vitest, Cloudflare test utilities, and Playwright.
-- [ ] Configure strict TypeScript and fail CI on type errors, lint errors, formatting drift, test failure, or build failure.
-- [ ] Configure shadcn with accessible neutral primitives while keeping forum-specific layouts custom.
-- [ ] Add a smoke test that renders the SSR root route and asserts a `200` response containing `CFBBS`.
-- [ ] Add a Playwright smoke test that loads the local home page without console errors.
-- [ ] Configure GitHub Actions for Node 22 and pnpm cache; run `pnpm check` without accessing real Cloudflare or Misskey resources.
-- [ ] Commit with `chore: add quality and test foundations`.
+- [x] Install Tailwind CSS, shadcn/ui prerequisites, Drizzle, Better Auth, Fedify, Zod, Markdown parsing/sanitization, Vitest, Cloudflare test utilities, and Playwright.
+- [x] Configure strict TypeScript and fail CI on type errors, lint errors, formatting drift, test failure, or build failure.
+- [x] Configure shadcn with accessible neutral primitives while keeping forum-specific layouts custom.
+- [x] Add a smoke test that renders the SSR root route and asserts a `200` response containing `CFBBS`.
+- [x] Add a Playwright smoke test that loads the local home page without console errors.
+- [x] Configure GitHub Actions for Node 22 and pnpm cache; run `pnpm check` without accessing real Cloudflare or Misskey resources.
+- [x] Commit with `chore: add quality and test foundations`.
 
 ### Task 3: Configure Workers bindings and domain boundaries
 
 **Files:** `wrangler.jsonc`, `.dev.vars.example`, `worker-configuration.d.ts`, `app/modules/*/index.ts`, `app/db/client.server.ts`
 
-- [ ] Configure `nodejs_compat`, local D1, Fedify KV, federation Queue, dead-letter Queue, and daily Cron bindings.
-- [ ] Define a separate `test` Wrangler environment with resource names `cfbbs-test-db`, `cfbbs-test-fedify`, `cfbbs-test-federation`, and `cfbbs-test-federation-dlq`.
-- [ ] Add `.dev.vars.example` with non-secret keys only: `APP_ORIGIN`, `BETTER_AUTH_SECRET`, and `FEDERATION_KEY_ENCRYPTION_SECRET`.
-- [ ] Create focused module entrypoints for identity, forum, permissions, federation, moderation, and jobs.
-- [ ] Add a `/health` resource route that reports application readiness without exposing secrets or raw binding identifiers.
-- [ ] Test that missing required bindings or secrets fail fast with a clear startup error.
-- [ ] Commit with `chore: configure Workers service boundaries`.
+- [x] Configure `nodejs_compat`, local D1, Fedify KV, federation Queue, dead-letter Queue, and daily Cron bindings.
+- [x] Define a separate `test` Wrangler environment with resource names `cfbbs-test-db`, `cfbbs-test-fedify`, `cfbbs-test-federation`, and `cfbbs-test-federation-dlq`.
+- [x] Add `.dev.vars.example` with non-secret keys only: `APP_ORIGIN`, `BETTER_AUTH_SECRET`, and `FEDERATION_KEY_ENCRYPTION_SECRET`.
+- [x] Create focused module entrypoints for identity, forum, permissions, federation, moderation, and jobs.
+- [x] Add a `/health` resource route that reports application readiness without exposing secrets or raw binding identifiers.
+- [x] Test that missing required bindings or secrets fail fast with a clear startup error.
+- [x] Commit with `chore: configure Workers service boundaries`.
 
 **Milestone 1 acceptance:** `pnpm install`, local migrations, seed, `pnpm dev`, `pnpm check`, and the GitHub Actions workflow all succeed from a fresh clone; no remote Cloudflare resource has been created.
 
@@ -153,14 +153,14 @@ Invariants:
 
 **Files:** `app/db/schema/*`, `drizzle.config.ts`, `drizzle/0001_initial.sql`, `app/db/seed.server.ts`, `tests/integration/db/*`
 
-- [ ] Define identity/profile tables, immutable username constraints, sessions, and encrypted federation-key storage.
-- [ ] Define boards and a closure table supporting arbitrary depth, moves, ancestor paths, and subtree queries.
-- [ ] Define groups, memberships, permission grants, and optional board scope using allow-only union semantics.
-- [ ] Define threads, posts, revisions, likes, notifications, reports, blocks, instance policies, audit records, remote actors/objects, inbox receipts, delivery attempts, and federation outbox events.
-- [ ] Create D1 FTS indexes for local public topic titles and local public post bodies only.
-- [ ] Seed administrator, registered-user, and moderator groups plus public and private example boards.
-- [ ] Test migration from an empty database, deterministic seed behavior, closure-table integrity, and private-content exclusion from FTS.
-- [ ] Commit with `feat: add initial D1 domain schema`.
+- [x] Define identity/profile tables, immutable username constraints, sessions, and encrypted federation-key storage.
+- [x] Define boards and a closure table supporting arbitrary depth, moves, ancestor paths, and subtree queries.
+- [x] Define groups, memberships, permission grants, and optional board scope using allow-only union semantics.
+- [x] Define threads, posts, revisions, likes, notifications, reports, blocks, instance policies, audit records, remote actors/objects, inbox receipts, delivery attempts, and federation outbox events.
+- [x] Create D1 FTS indexes for local public topic titles and local public post bodies only.
+- [x] Seed administrator, registered-user, and moderator groups plus public and private example boards.
+- [x] Test migration from an empty database, deterministic seed behavior, closure-table integrity, and private-content exclusion from FTS.
+- [x] Commit with `feat: add initial D1 domain schema`.
 
 ### Task 5: Implement authentication and profiles
 

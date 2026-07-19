@@ -34,7 +34,7 @@
     ]
   },
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": ["*/5 * * * *", "0 3 * * *"]
   },
   "observability": {
     "enabled": true
@@ -77,7 +77,7 @@
         ]
       },
       "triggers": {
-        "crons": ["*/5 * * * *"]
+        "crons": ["*/5 * * * *", "0 3 * * *"]
       },
       "vars": {
         "APP_ORIGIN": "https://bbs-test.example.invalid",

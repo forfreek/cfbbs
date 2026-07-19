@@ -58,7 +58,7 @@
   "scripts": {
     "build": "react-router build",
     "cf-typegen": "wrangler types && react-router typegen",
-    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build && wrangler deploy --dry-run",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
     "dev": "react-router dev",
     "db:generate": "drizzle-kit generate",
@@ -69,6 +69,7 @@
     "lint": "eslint .",
     "preview": "pnpm build && vite preview",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "typecheck": "pnpm run cf-typegen && tsc -b"

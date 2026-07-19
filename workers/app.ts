@@ -4,6 +4,7 @@ import { createWorkerFederation } from "@/modules/federation/server";
 import { processFederationQueue } from "@/modules/jobs/federation-queue";
 import { enqueuePendingOutboxEvents } from "@/modules/jobs/federation-outbox";
 import { purgeExpiredRemoteObjects } from "@/modules/jobs/remote-retention";
+import { scheduledWork } from "@/modules/jobs/scheduled";
 import { purgeExpiredRemoteActorQuarantines } from "@/modules/moderation/remote-quarantine";
 
 declare module "react-router" {
@@ -38,13 +39,18 @@ export default {
   async queue(batch, env) {
     await processFederationQueue(batch, env);
   },
-  scheduled(_controller, env, ctx) {
+  scheduled(controller, env, ctx) {
     ctx.waitUntil(
-      Promise.all([
-        enqueuePendingOutboxEvents(env.DB, env.FEDERATION_QUEUE),
-        purgeExpiredRemoteObjects(env.DB),
-        purgeExpiredRemoteActorQuarantines(env.DB),
-      ]),
+      Promise.all(
+        scheduledWork(
+          controller.cron,
+          () => enqueuePendingOutboxEvents(env.DB, env.FEDERATION_QUEUE),
+          [
+            () => purgeExpiredRemoteObjects(env.DB),
+            () => purgeExpiredRemoteActorQuarantines(env.DB),
+          ],
+        ),
+      ),
     );
   },
 } satisfies ExportedHandler<Env>;

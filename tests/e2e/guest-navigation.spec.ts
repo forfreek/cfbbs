@@ -6,8 +6,9 @@ test("renders the public home page and opens registration without runtime errors
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const response = await page.goto("/", { waitUntil: "domcontentloaded" });
 
+  expect(response?.status()).toBe(200);
   await expect(page).toHaveTitle("CFBBS");
   await expect(page.getByRole("heading", { name: "全部主题" })).toBeVisible();
   await expect(page.locator("vite-error-overlay")).toHaveCount(0);
