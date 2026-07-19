@@ -178,13 +178,13 @@ Invariants:
 
 **Files:** `app/modules/permissions/*`, `app/modules/forum/boards/*`, `app/routes/admin.boards.*`, `app/routes/admin.groups.*`, `tests/unit/permissions/*`
 
-- [ ] Implement one authorization entrypoint accepting `AuthorizationRequest` and returning an explainable decision.
-- [ ] Union grants across all user groups and support global or board-scoped grants without deny rules.
-- [ ] Implement board creation, move, reorder, mode changes, visibility changes, and safe closure-table updates.
-- [ ] Prevent moves that create cycles and prevent users from discovering inaccessible private ancestors or descendants.
-- [ ] Implement group management, membership assignment, permission editing, and audit logging.
-- [ ] Test public guest access, private group access, multiple-group unions, board-scope inheritance, cycle rejection, and administrator recovery access.
-- [ ] Commit with `feat: add hierarchical boards and RBAC`.
+- [x] Implement one authorization entrypoint accepting `AuthorizationRequest` and returning an explainable decision.
+- [x] Union grants across all user groups and support global or board-scoped grants without deny rules.
+- [x] Implement board creation, move, reorder, mode changes, visibility changes, and safe closure-table updates.
+- [x] Prevent moves that create cycles and prevent users from discovering inaccessible private ancestors or descendants.
+- [x] Implement group management, membership assignment, permission editing, and audit logging.
+- [x] Test public guest access, private group access, multiple-group unions, board-scope inheritance, cycle rejection, and administrator recovery access.
+- [x] Commit with `feat: add hierarchical boards and RBAC`.
 
 ### Task 7: Implement threads, posts, Markdown, likes, and notifications
 

@@ -15,6 +15,21 @@ export type NewBoard = {
   sortOrder?: number;
 };
 
+export type ManagedBoard = Required<NewBoard>;
+
+const boardModes = ["container", "posting", "read_only"] as const;
+const boardVisibilities = ["public", "private"] as const;
+
+export function isBoardMode(value: string): value is NewBoard["mode"] {
+  return (boardModes as readonly string[]).includes(value);
+}
+
+export function isBoardVisibility(
+  value: string,
+): value is NewBoard["visibility"] {
+  return (boardVisibilities as readonly string[]).includes(value);
+}
+
 type BoardAudit = {
   actorUserId: string;
   auditId: string;
@@ -27,6 +42,30 @@ type StoredBoard = {
 };
 
 type BoardDescendant = { id: string; visibility: NewBoard["visibility"] };
+
+function normalizeBoardDetails(input: {
+  slug: string;
+  title: string;
+  description?: string;
+  mode: string;
+}) {
+  const slug = input.slug.trim().toLowerCase();
+  const title = input.title.trim();
+  const description = (input.description ?? "").trim();
+  if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) {
+    throw new Error(
+      "Board slug must use lowercase letters, numbers, and hyphens.",
+    );
+  }
+  if (!title || title.length > 120) {
+    throw new Error("Board title must be between 1 and 120 characters.");
+  }
+  if (description.length > 2_000) {
+    throw new Error("Board description must be 2,000 characters or fewer.");
+  }
+  if (!isBoardMode(input.mode)) throw new Error("Board mode is invalid.");
+  return { slug, title, description, mode: input.mode };
+}
 
 function assertBoardAudit(audit: BoardAudit) {
   if (!audit.actorUserId.trim() || !audit.auditId.trim()) {
@@ -96,6 +135,15 @@ export async function createBoard(
   board: NewBoard & BoardAudit,
 ) {
   assertBoardAudit(board);
+  if (!board.id.trim()) throw new Error("A board identifier is required.");
+  const details = normalizeBoardDetails(board);
+  if (!isBoardVisibility(board.visibility)) {
+    throw new Error("Board visibility is invalid.");
+  }
+  const sortOrder = board.sortOrder ?? 0;
+  if (!Number.isSafeInteger(sortOrder)) {
+    throw new Error("Board sort order must be an integer.");
+  }
   if (board.parentId) {
     const parent = await loadStoredBoard(database, board.parentId);
     if (!parent) throw new Error("Parent board does not exist.");
@@ -115,12 +163,12 @@ export async function createBoard(
       .bind(
         board.id,
         board.parentId,
-        board.slug,
-        board.title,
-        board.description ?? "",
-        board.mode,
+        details.slug,
+        details.title,
+        details.description,
+        details.mode,
         board.visibility,
-        board.sortOrder ?? 0,
+        sortOrder,
         now,
         now,
       ),
@@ -135,7 +183,7 @@ export async function createBoard(
       {
         parentId: board.parentId,
         visibility: board.visibility,
-        mode: board.mode,
+        mode: details.mode,
       },
       now,
     ),
@@ -148,6 +196,10 @@ export async function moveBoard(
   input: BoardAudit & { boardId: string; newParentId: string | null },
 ) {
   assertBoardAudit(input);
+  if (!input.boardId.trim()) throw new Error("A board identifier is required.");
+  if (input.newParentId !== null && !input.newParentId.trim()) {
+    throw new Error("New parent board identifier is invalid.");
+  }
   const board = await loadStoredBoard(database, input.boardId);
   if (!board) throw new Error("Board does not exist.");
   const descendants = await listBoardDescendants(database, input.boardId);
@@ -199,6 +251,7 @@ export async function updateBoard(
   },
 ) {
   assertBoardAudit(input);
+  const details = normalizeBoardDetails(input);
   const board = await loadStoredBoard(database, input.boardId);
   if (!board) throw new Error("Board does not exist.");
   const now = new Date().toISOString();
@@ -208,10 +261,10 @@ export async function updateBoard(
         "UPDATE boards SET slug = ?, title = ?, description = ?, mode = ?, updated_at = ? WHERE id = ?",
       )
       .bind(
-        input.slug,
-        input.title,
-        input.description,
-        input.mode,
+        details.slug,
+        details.title,
+        details.description,
+        details.mode,
         now,
         input.boardId,
       ),
@@ -221,7 +274,34 @@ export async function updateBoard(
       "board.update",
       input.boardId,
       {
-        slug: input.slug,
+        slug: details.slug,
+        mode: details.mode,
+      },
+      now,
+    ),
+  ]);
+}
+
+export async function setBoardMode(
+  database: D1Database,
+  input: BoardAudit & { boardId: string; mode: NewBoard["mode"] },
+) {
+  assertBoardAudit(input);
+  if (!isBoardMode(input.mode)) throw new Error("Board mode is invalid.");
+  if (!(await loadStoredBoard(database, input.boardId))) {
+    throw new Error("Board does not exist.");
+  }
+  const now = new Date().toISOString();
+  await database.batch([
+    database
+      .prepare("UPDATE boards SET mode = ?, updated_at = ? WHERE id = ?")
+      .bind(input.mode, now, input.boardId),
+    boardAuditStatement(
+      database,
+      input,
+      "board.mode",
+      input.boardId,
+      {
         mode: input.mode,
       },
       now,
@@ -263,6 +343,9 @@ export async function setBoardVisibility(
   input: BoardAudit & { boardId: string; visibility: NewBoard["visibility"] },
 ) {
   assertBoardAudit(input);
+  if (!isBoardVisibility(input.visibility)) {
+    throw new Error("Board visibility is invalid.");
+  }
   const board = await loadStoredBoard(database, input.boardId);
   if (!board) throw new Error("Board does not exist.");
   if (board.visibility === input.visibility) return false;
@@ -310,4 +393,12 @@ export async function setBoardVisibility(
     ),
   ]);
   return true;
+}
+
+export async function listManagedBoards(database: D1Database) {
+  return database
+    .prepare(
+      "SELECT id, parent_id AS parentId, slug, title, description, mode, visibility, sort_order AS sortOrder FROM boards ORDER BY sort_order ASC, title ASC",
+    )
+    .all<ManagedBoard>();
 }

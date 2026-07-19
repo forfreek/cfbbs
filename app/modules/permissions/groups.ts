@@ -1,7 +1,7 @@
 import type { Permission } from "./authorization";
 import { administratorGroupId } from "./system-groups";
 
-const permissionKeys = [
+export const permissionKeys = [
   "site.manage",
   "users.manage",
   "groups.manage",
@@ -32,6 +32,13 @@ export type GroupGrant = {
   groupId: string;
   permission: Permission;
   boardId: string | null;
+  createdAt: string;
+};
+
+export type GroupMember = {
+  userId: string;
+  handle: string | null;
+  displayName: string | null;
   createdAt: string;
 };
 
@@ -113,6 +120,15 @@ export async function listGroupPermissions(
     )
     .bind(groupId)
     .all<GroupGrant>();
+}
+
+export async function listGroupMembers(database: D1Database, groupId: string) {
+  return database
+    .prepare(
+      "SELECT group_members.user_id AS userId, profiles.handle, profiles.display_name AS displayName, group_members.created_at AS createdAt FROM group_members LEFT JOIN profiles ON profiles.user_id = group_members.user_id WHERE group_members.group_id = ? ORDER BY profiles.handle ASC, group_members.user_id ASC",
+    )
+    .bind(groupId)
+    .all<GroupMember>();
 }
 
 export async function createGroup(
@@ -286,6 +302,11 @@ export async function addManagedGroupMember(
   if (!(await loadGroup(database, input.groupId))) {
     throw new Error("Group does not exist.");
   }
+  const user = await database
+    .prepare("SELECT id FROM user WHERE id = ? LIMIT 1")
+    .bind(input.userId)
+    .first<{ id: string }>();
+  if (!user) throw new Error("User does not exist.");
   const now = new Date().toISOString();
   await database.batch([
     database

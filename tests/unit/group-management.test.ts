@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addManagedGroupMember,
   isPermission,
   removeManagedGroupMember,
   setGroupPermission,
@@ -10,6 +11,7 @@ import { administratorGroupId } from "@/modules/permissions/system-groups";
 function groupDatabase(options: {
   group?: { id: string; isSystem: number };
   boardExists?: boolean;
+  userExists?: boolean;
   memberCount?: number;
 }) {
   const batches: Array<Array<{ sql: string; values: unknown[] }>> = [];
@@ -27,6 +29,12 @@ function groupDatabase(options: {
               return {
                 first: async () =>
                   options.boardExists ? { id: "board-1" } : null,
+              };
+            }
+            if (sql.startsWith("SELECT id FROM user")) {
+              return {
+                first: async () =>
+                  options.userExists ? { id: "user-1" } : null,
               };
             }
             if (sql.startsWith("SELECT COUNT(*)")) {
@@ -85,6 +93,21 @@ describe("group management", () => {
         userId: "admin-1",
       }),
     ).rejects.toThrow("last administrator");
+    expect(batches).toEqual([]);
+  });
+
+  it("does not assign a group to an unknown user", async () => {
+    const { database, batches } = groupDatabase({
+      group: { id: "group-1", isSystem: 0 },
+    });
+
+    await expect(
+      addManagedGroupMember(database, {
+        ...audit,
+        groupId: "group-1",
+        userId: "missing-user",
+      }),
+    ).rejects.toThrow("User does not exist");
     expect(batches).toEqual([]);
   });
 });

@@ -37,3 +37,12 @@ test("requires a local session before opening the following feed", async ({
   await expect(page.locator("vite-error-overlay")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("requires a local session before opening board and group administration", async ({
+  page,
+}) => {
+  for (const path of ["/admin/boards", "/admin/groups"]) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/auth\/login$/);
+  }
+});

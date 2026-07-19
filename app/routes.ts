@@ -19,6 +19,8 @@ export default [
   route("settings/profile", "routes/settings.profile.tsx"),
   route("settings/actor-preferences", "routes/settings.actor-preferences.tsx"),
   route("notifications", "routes/notifications.tsx"),
+  route("admin/boards", "routes/admin.boards.tsx"),
+  route("admin/groups", "routes/admin.groups.tsx"),
   route("admin/federation", "routes/admin.federation.tsx"),
   route(".well-known/webfinger", "routes/webfinger.ts"),
   route(".well-known/nodeinfo", "routes/nodeinfo.well-known.ts"),
