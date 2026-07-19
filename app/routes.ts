@@ -8,6 +8,8 @@ export default [
   route("users/:handle", "routes/users.$handle.tsx"),
   route("settings/profile", "routes/settings.profile.tsx"),
   route(".well-known/webfinger", "routes/webfinger.ts"),
+  route(".well-known/nodeinfo", "routes/nodeinfo.well-known.ts"),
+  route("nodeinfo/2.1", "routes/nodeinfo.ts"),
   route("api/auth/*", "routes/api.auth.ts"),
   route("health", "routes/health.ts"),
 ] satisfies RouteConfig;
