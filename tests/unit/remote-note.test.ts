@@ -54,6 +54,7 @@ describe("remote Note persistence", () => {
     expect(followedRemoteNotesQuery).toContain("state = 'accepted'");
     expect(followedRemoteNotesQuery).toContain("deleted_at IS NULL");
     expect(followedRemoteNotesQuery).toContain("blocked_at IS NULL");
+    expect(followedRemoteNotesQuery).toContain("user_actor_preferences");
   });
 
   it("adds a remote reply once and upserts it by federation object ID", () => {

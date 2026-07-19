@@ -65,6 +65,7 @@ function directActivityRecipients(activityJson: string) {
 
 async function hasBlockedDirectRecipient(
   database: D1Database,
+  localActorId: string,
   activityJson: string,
 ) {
   const recipients = directActivityRecipients(activityJson);
@@ -72,9 +73,9 @@ async function hasBlockedDirectRecipient(
   const placeholders = recipients.map(() => "?").join(", ");
   const actor = await database
     .prepare(
-      `SELECT 1 FROM federation_actors WHERE is_local = 0 AND blocked_at IS NOT NULL AND uri IN (${placeholders}) LIMIT 1`,
+      `SELECT 1 FROM federation_actors WHERE is_local = 0 AND uri IN (${placeholders}) AND (blocked_at IS NOT NULL OR EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = federation_actors.id AND user_actor_preferences.state = 'blocked')) LIMIT 1`,
     )
-    .bind(...recipients)
+    .bind(...recipients, localActorId)
     .first<{ 1: number }>();
   return actor != null;
 }
@@ -115,7 +116,11 @@ export async function deliverOutboxEvent(
   }
   if (
     event.deliveryScope === "direct" &&
-    (await hasBlockedDirectRecipient(database, event.activityJson))
+    (await hasBlockedDirectRecipient(
+      database,
+      event.actorId,
+      event.activityJson,
+    ))
   ) {
     await cancelBlockedDirectDelivery(database, event.id);
     return {

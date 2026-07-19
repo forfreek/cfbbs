@@ -398,6 +398,25 @@ export const federationActors = sqliteTable(
   ],
 );
 
+export const userActorPreferences = sqliteTable(
+  "user_actor_preferences",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => federationActors.id),
+    state: text("state", { enum: ["muted", "blocked"] }).notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.actorId] }),
+    index("user_actor_preferences_actor_index").on(table.actorId),
+  ],
+);
+
 export const federationObjects = sqliteTable(
   "federation_objects",
   {

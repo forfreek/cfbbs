@@ -15,6 +15,7 @@ export type RemoteNote = {
 
 export type FollowedRemoteNote = {
   uri: string;
+  actorId: string;
   actorUri: string;
   actorName: string;
   contentHtml: string;
@@ -223,6 +224,7 @@ export async function deleteRemoteNote(
 const followedRemoteNotesQuery = `
   SELECT
     federation_objects.uri,
+    federation_actors.id AS actorId,
     federation_actors.uri AS actorUri,
     federation_actors.name AS actorName,
     federation_objects.content_html AS contentHtml,
@@ -239,6 +241,12 @@ const followedRemoteNotesQuery = `
     AND federation_objects.deleted_at IS NULL
     AND federation_actors.is_local = 0
     AND federation_actors.blocked_at IS NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM user_actor_preferences
+      WHERE user_actor_preferences.user_id = ?
+        AND user_actor_preferences.actor_id = federation_actors.id
+    )
   ORDER BY federation_objects.published_at DESC, federation_objects.uri DESC
   LIMIT 50
 `;
@@ -249,7 +257,7 @@ export async function listFollowedRemoteNotes(
 ) {
   return database
     .prepare(followedRemoteNotesQuery)
-    .bind(localActorId)
+    .bind(localActorId, localActorId)
     .all<FollowedRemoteNote>();
 }
 

@@ -56,4 +56,12 @@ describe("forum read privacy", () => {
     expect(queries[0]).toContain("posts.origin = 'local'");
     expect(queries[0]).toContain("federation_actors.blocked_at IS NULL");
   });
+
+  it("removes actor preferences from a viewer's thread results", async () => {
+    const { database, queries } = readDatabase();
+
+    await listForumThreadPosts(database, "thread-1", false, "user-1");
+    expect(queries[0]).toContain("user_actor_preferences.user_id = ?");
+    expect(queries[0]).toContain("user_actor_preferences.actor_id");
+  });
 });

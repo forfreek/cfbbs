@@ -16,6 +16,7 @@ export default [
   route("posts/:postId/like", "routes/posts.$postId.like.ts"),
   route("posts/:postId/report", "routes/posts.$postId.report.ts"),
   route("settings/profile", "routes/settings.profile.tsx"),
+  route("settings/actor-preferences", "routes/settings.actor-preferences.tsx"),
   route("notifications", "routes/notifications.tsx"),
   route("admin/federation", "routes/admin.federation.tsx"),
   route(".well-known/webfinger", "routes/webfinger.ts"),

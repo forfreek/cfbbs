@@ -1,4 +1,4 @@
-import { Link, redirect } from "react-router";
+import { Form, Link, redirect } from "react-router";
 
 import type { Route } from "./+types/following";
 import { listFollowedRemoteNotes } from "@/modules/federation/remote-note";
@@ -24,9 +24,17 @@ export default function Following({ loaderData }: Route.ComponentProps) {
             我的关注
           </h1>
         </div>
-        <Link className="text-sm text-blue-700 hover:underline" to="/">
-          返回论坛
-        </Link>
+        <div className="flex gap-4 text-sm">
+          <Link
+            className="text-blue-700 hover:underline"
+            to="/settings/actor-preferences"
+          >
+            管理已隐藏账号
+          </Link>
+          <Link className="text-blue-700 hover:underline" to="/">
+            返回论坛
+          </Link>
+        </div>
       </div>
       {loaderData.notes.length > 0 ? (
         <ol className="mt-8 space-y-5">
@@ -53,6 +61,25 @@ export default function Following({ loaderData }: Route.ComponentProps) {
               >
                 查看原文
               </a>
+              <Form method="post" action="/settings/actor-preferences">
+                <input type="hidden" name="intent" value="set" />
+                <input type="hidden" name="actorId" value={note.actorId} />
+                <label className="sr-only" htmlFor={`preference-${note.uri}`}>
+                  管理账号
+                </label>
+                <select
+                  id={`preference-${note.uri}`}
+                  name="state"
+                  defaultValue="muted"
+                  className="ml-4 rounded-md border px-2 py-1 text-xs"
+                >
+                  <option value="muted">静音账号</option>
+                  <option value="blocked">屏蔽账号</option>
+                </select>
+                <button className="ml-2 text-xs text-slate-500 hover:text-blue-700 hover:underline">
+                  保存
+                </button>
+              </Form>
             </li>
           ))}
         </ol>

@@ -12,9 +12,9 @@ export async function createNotification(
   notification: NewNotification,
 ) {
   if (notification.recipientUserId === notification.actorId) return false;
-  await database
+  const result = await database
     .prepare(
-      "INSERT INTO notifications (id, recipient_user_id, actor_id, type, thread_id, post_id, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)",
+      "INSERT INTO notifications (id, recipient_user_id, actor_id, type, thread_id, post_id, read_at, created_at) SELECT ?, ?, ?, ?, ?, ?, NULL, ? WHERE NOT EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = ?)",
     )
     .bind(
       notification.id,
@@ -24,7 +24,9 @@ export async function createNotification(
       notification.threadId ?? null,
       notification.postId ?? null,
       new Date().toISOString(),
+      notification.recipientUserId,
+      notification.actorId,
     )
     .run();
-  return true;
+  return result.meta.changes === 1;
 }

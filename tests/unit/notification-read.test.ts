@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  listNotifications,
   markNotificationRead,
   notificationForViewer,
 } from "@/modules/forum/notifications/read.server";
@@ -57,5 +58,25 @@ describe("notification viewer data", () => {
       createdAt: "2026-07-19T00:00:00.000Z",
       preview: { boardTitle: null, author: null, excerpt: null },
     });
+  });
+});
+
+describe("notification filtering", () => {
+  it("hides notifications from globally and personally blocked actors", async () => {
+    const queries: string[] = [];
+    const database = {
+      prepare(sql: string) {
+        queries.push(sql);
+        return {
+          bind() {
+            return { all: async () => ({ results: [] }) };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await listNotifications(database, "user-1");
+    expect(queries[0]).toContain("user_actor_preferences");
+    expect(queries[0]).toContain("federation_actors.blocked_at IS NULL");
   });
 });
