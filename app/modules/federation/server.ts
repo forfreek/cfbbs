@@ -6,9 +6,12 @@ import {
 } from "@fedify/fedify";
 import {
   Accept,
+  Create,
   CryptographicKey,
   Follow,
+  Note,
   Person,
+  PUBLIC_COLLECTION,
   Reject,
   Undo,
 } from "@fedify/vocab";
@@ -31,6 +34,8 @@ import {
   importFederationPrivateKey,
   importFederationPublicKey,
 } from "./keys";
+import { isSafeRemoteUrl } from "./remote-url";
+import { storeRemoteNote } from "./remote-note";
 
 export type FederationEnvironment = Pick<
   Env,
@@ -48,6 +53,7 @@ type LocalActorProfile = LocalActor & {
 };
 type InstancePolicy = { state: "allowed" | "blocked" | "limited" };
 type ExistingRemoteActor = { blockedAt: string | null };
+type KnownRemoteActor = { id: string };
 
 class RejectedInboundActivity extends Error {}
 
@@ -62,6 +68,35 @@ function actorName(value: unknown) {
     return value.value;
   }
   return "";
+}
+
+function textValue(value: unknown) {
+  if (typeof value === "string") return value;
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "value" in value &&
+    typeof value.value === "string"
+  ) {
+    return value.value;
+  }
+  return "";
+}
+
+function instantValue(value: unknown) {
+  if (!value) return null;
+  const timestamp = String(value);
+  if (Number.isNaN(new Date(timestamp).getTime())) return null;
+  return new Date(timestamp).toISOString();
+}
+
+function isPublicNote(note: Note) {
+  const audience = [...note.toIds, ...note.ccIds];
+  return (
+    audience.some((recipient) => recipient.href === PUBLIC_COLLECTION.href) &&
+    note.btoIds.length === 0 &&
+    note.bccIds.length === 0
+  );
 }
 
 async function loadLocalActor(
@@ -111,6 +146,19 @@ async function isBlockedRemoteActor(database: D1Database, actorUri: string) {
       .first<ExistingRemoteActor>(),
   ]);
   return policy?.state === "blocked" || actor?.blockedAt != null;
+}
+
+async function loadFollowedRemoteActor(
+  database: D1Database,
+  localActorId: string,
+  actorUri: string,
+) {
+  return database
+    .prepare(
+      "SELECT federation_actors.id AS id FROM federation_follows INNER JOIN federation_actors ON federation_actors.id = federation_follows.following_actor_id WHERE federation_follows.follower_actor_id = ? AND federation_actors.uri = ? AND federation_actors.is_local = 0 AND federation_actors.blocked_at IS NULL AND federation_follows.state = 'accepted' LIMIT 1",
+    )
+    .bind(localActorId, actorUri)
+    .first<KnownRemoteActor>();
 }
 
 async function resolveRemoteFollower(
@@ -301,6 +349,74 @@ export function processInboundFollowReject(
   return processInboundFollowOutcome(context, reject, "rejected");
 }
 
+export async function processInboundCreate(
+  context: InboxContext<FederationEnvironment>,
+  create: Create,
+) {
+  const activityId = create.id?.href;
+  const actorUri = create.actorId?.href;
+  const recipient = context.recipient;
+  if (!activityId || !actorUri || !recipient) return;
+  if (!validateInboxActivity({ activityId, actorUri }).ok) return;
+
+  const localActor = await loadLocalActor(context.data.DB, recipient);
+  if (!localActor) return;
+  const claimed = await claimInboxActivity(context.data.DB, {
+    activityId,
+    actorUri,
+  });
+  if (!claimed) return;
+
+  try {
+    if (await isBlockedRemoteActor(context.data.DB, actorUri)) {
+      throw new RejectedInboundActivity("Remote actor or instance is blocked.");
+    }
+    if (
+      !(await loadFollowedRemoteActor(context.data.DB, localActor.id, actorUri))
+    ) {
+      throw new RejectedInboundActivity("Remote actor is not followed.");
+    }
+    const note = await create.getObject(context);
+    const noteUri = note?.id?.href;
+    if (
+      !(note instanceof Note) ||
+      !noteUri ||
+      !isSafeRemoteUrl(noteUri) ||
+      note.attributionId?.href !== actorUri
+    ) {
+      throw new RejectedInboundActivity(
+        "Create must contain a Note attributed to its actor.",
+      );
+    }
+    if (new URL(noteUri).origin !== new URL(actorUri).origin) {
+      throw new RejectedInboundActivity("Note must be hosted by its actor.");
+    }
+    if (!isPublicNote(note)) {
+      throw new RejectedInboundActivity("Only public Notes are supported.");
+    }
+    const contentHtml = textValue(note.content);
+    if (!contentHtml) {
+      throw new RejectedInboundActivity("Note content is required.");
+    }
+    await storeRemoteNote(context.data.DB, {
+      uri: noteUri,
+      actorUri,
+      inReplyToUri: note.replyTargetId?.href ?? null,
+      contentHtml,
+      publishedAt: instantValue(note.published) ?? new Date().toISOString(),
+      updatedAt: instantValue(note.updated),
+    });
+    await completeInboxActivity(context.data.DB, activityId);
+  } catch (error) {
+    if (error instanceof RejectedInboundActivity) {
+      await rejectInboxActivity(context.data.DB, activityId, error.message);
+      return;
+    }
+    await releaseInboxActivity(context.data.DB, activityId);
+    throw error;
+  }
+}
+
 const builder = createFederationBuilder<FederationEnvironment>();
 
 builder
@@ -348,7 +464,8 @@ builder
   .on(Follow, processInboundFollow)
   .on(Undo, processInboundUndo)
   .on(Accept, processInboundFollowAccept)
-  .on(Reject, processInboundFollowReject);
+  .on(Reject, processInboundFollowReject)
+  .on(Create, processInboundCreate);
 
 export async function createWorkerFederation(
   environment: FederationEnvironment,

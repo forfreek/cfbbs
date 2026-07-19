@@ -21,3 +21,19 @@ test("renders the public home page and opens registration without runtime errors
   await expect(page.locator("vite-error-overlay")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("requires a local session before opening the following feed", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/following", { waitUntil: "domcontentloaded" });
+
+  await expect(page).toHaveURL(/\/auth\/login$/);
+  await expect(
+    page.getByRole("heading", { name: "Welcome back" }),
+  ).toBeVisible();
+  await expect(page.locator("vite-error-overlay")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

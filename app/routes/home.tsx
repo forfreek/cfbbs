@@ -88,7 +88,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             >
               Boards
             </Link>
-            <Link className="text-slate-600 hover:text-slate-950" to="/">
+            <Link
+              className="text-slate-600 hover:text-slate-950"
+              to="/following"
+            >
               Following
             </Link>
             <Link

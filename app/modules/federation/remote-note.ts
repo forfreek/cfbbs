@@ -1,0 +1,162 @@
+import sanitizeHtml from "sanitize-html";
+
+import { isSafeRemoteUrl } from "./remote-url";
+
+type Statement = { sql: string; params: readonly unknown[] };
+
+export type RemoteNote = {
+  uri: string;
+  actorUri: string;
+  inReplyToUri: string | null;
+  contentHtml: string;
+  publishedAt: string;
+  updatedAt: string | null;
+};
+
+export type FollowedRemoteNote = {
+  uri: string;
+  actorUri: string;
+  actorName: string;
+  contentHtml: string;
+  publishedAt: string;
+  updatedAt: string | null;
+};
+
+const allowedTags = [
+  "p",
+  "br",
+  "strong",
+  "em",
+  "del",
+  "code",
+  "pre",
+  "blockquote",
+  "ul",
+  "ol",
+  "li",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "a",
+];
+
+export function sanitizeRemoteNoteHtml(value: string) {
+  return sanitizeHtml(value, {
+    allowedTags,
+    allowedAttributes: { a: ["href", "title"] },
+    allowedSchemes: ["https", "http", "mailto"],
+    transformTags: {
+      a: sanitizeHtml.simpleTransform("a", { rel: "nofollow ugc noopener" }),
+    },
+  }).trim();
+}
+
+function isTimestamp(value: string | null) {
+  return value !== null && !Number.isNaN(new Date(value).getTime());
+}
+
+export function validateRemoteNote(input: RemoteNote) {
+  if (!isSafeRemoteUrl(input.uri)) {
+    return {
+      ok: false as const,
+      message: "Note ID must be a public HTTPS URL.",
+    };
+  }
+  if (!isSafeRemoteUrl(input.actorUri)) {
+    return {
+      ok: false as const,
+      message: "Note attribution must be a public HTTPS URL.",
+    };
+  }
+  if (input.inReplyToUri !== null && input.inReplyToUri.length > 2_000) {
+    return { ok: false as const, message: "Reply target is too long." };
+  }
+  if (!isTimestamp(input.publishedAt)) {
+    return { ok: false as const, message: "Note published time is invalid." };
+  }
+  if (input.updatedAt !== null && !isTimestamp(input.updatedAt)) {
+    return { ok: false as const, message: "Note updated time is invalid." };
+  }
+  if (input.contentHtml.length > 50_000) {
+    return { ok: false as const, message: "Note content is too long." };
+  }
+  if (!sanitizeRemoteNoteHtml(input.contentHtml)) {
+    return { ok: false as const, message: "Note content is empty." };
+  }
+  return { ok: true as const };
+}
+
+export function remoteNoteStatements(
+  input: RemoteNote,
+  now: string,
+): Statement[] {
+  const validation = validateRemoteNote(input);
+  if (!validation.ok) throw new Error(validation.message);
+  const retentionExpiresAt = new Date(
+    new Date(now).getTime() + 90 * 24 * 60 * 60 * 1_000,
+  ).toISOString();
+  const contentHtml = sanitizeRemoteNoteHtml(input.contentHtml);
+  return [
+    {
+      sql: "INSERT INTO federation_objects (id, uri, actor_id, type, in_reply_to_uri, content_html, published_at, updated_at, deleted_at, retention_expires_at, created_at) VALUES (?, ?, ?, 'Note', ?, ?, ?, ?, NULL, ?, ?) ON CONFLICT(uri) DO UPDATE SET actor_id = excluded.actor_id, type = excluded.type, in_reply_to_uri = excluded.in_reply_to_uri, content_html = excluded.content_html, published_at = excluded.published_at, updated_at = excluded.updated_at, deleted_at = NULL, retention_expires_at = excluded.retention_expires_at",
+      params: [
+        input.uri,
+        input.uri,
+        input.actorUri,
+        input.inReplyToUri,
+        contentHtml,
+        input.publishedAt,
+        input.updatedAt,
+        retentionExpiresAt,
+        now,
+      ],
+    },
+  ];
+}
+
+export async function storeRemoteNote(database: D1Database, input: RemoteNote) {
+  const now = new Date().toISOString();
+  await database.batch(
+    remoteNoteStatements(input, now).map((statement) =>
+      database.prepare(statement.sql).bind(...statement.params),
+    ),
+  );
+}
+
+const followedRemoteNotesQuery = `
+  SELECT
+    federation_objects.uri,
+    federation_actors.uri AS actorUri,
+    federation_actors.name AS actorName,
+    federation_objects.content_html AS contentHtml,
+    federation_objects.published_at AS publishedAt,
+    federation_objects.updated_at AS updatedAt
+  FROM federation_objects
+  INNER JOIN federation_actors
+    ON federation_actors.id = federation_objects.actor_id
+  INNER JOIN federation_follows
+    ON federation_follows.following_actor_id = federation_actors.id
+  WHERE federation_follows.follower_actor_id = ?
+    AND federation_follows.state = 'accepted'
+    AND federation_objects.type = 'Note'
+    AND federation_objects.deleted_at IS NULL
+    AND federation_actors.is_local = 0
+    AND federation_actors.blocked_at IS NULL
+  ORDER BY federation_objects.published_at DESC, federation_objects.uri DESC
+  LIMIT 50
+`;
+
+export async function listFollowedRemoteNotes(
+  database: D1Database,
+  localActorId: string,
+) {
+  return database
+    .prepare(followedRemoteNotesQuery)
+    .bind(localActorId)
+    .all<FollowedRemoteNote>();
+}
+
+export const remoteNoteQueries = { followedRemoteNotesQuery };

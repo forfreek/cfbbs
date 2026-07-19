@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { Accept, Follow, Reject, Undo } from "@fedify/vocab";
+import {
+  Accept,
+  Create,
+  Follow,
+  Note,
+  PUBLIC_COLLECTION,
+  Reject,
+  Undo,
+} from "@fedify/vocab";
 
 import {
   generateFederationSigningKeyPair,
@@ -8,6 +16,7 @@ import {
 import {
   createWorkerFederation,
   processInboundFollowAccept,
+  processInboundCreate,
   processInboundFollow,
   processInboundFollowReject,
   processInboundUndo,
@@ -325,6 +334,69 @@ describe("Fedify inbox gateway", () => {
       ),
     ).toBe(true);
   });
+
+  it("stores a public Create from an accepted remote follow", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const batches: unknown[][] = [];
+    const database = remoteNoteDatabase(statements, batches);
+    const remoteActor = "https://remote.example/users/bob";
+    const create = new Create({
+      id: new URL("https://remote.example/activities/create-note-1"),
+      actor: new URL(remoteActor),
+      object: new Note({
+        id: new URL("https://remote.example/notes/1"),
+        attribution: new URL(remoteActor),
+        content: "<p>hello<script>alert(1)</script></p>",
+        to: PUBLIC_COLLECTION,
+      }),
+    });
+
+    await processInboundCreate(inboxContext(database), create);
+
+    expect(batches).toHaveLength(1);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("INSERT INTO federation_objects"),
+      ),
+    ).toBe(true);
+    const objectStatement = statements.find((statement) =>
+      statement.sql.includes("INSERT INTO federation_objects"),
+    );
+    expect(objectStatement?.params).toEqual(
+      expect.arrayContaining(["<p>hello</p>"]),
+    );
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("state = 'processed'"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a non-public remote Create without persisting content", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const batches: unknown[][] = [];
+    const database = remoteNoteDatabase(statements, batches);
+    const remoteActor = "https://remote.example/users/bob";
+    const create = new Create({
+      id: new URL("https://remote.example/activities/create-note-1"),
+      actor: new URL(remoteActor),
+      object: new Note({
+        id: new URL("https://remote.example/notes/1"),
+        attribution: new URL(remoteActor),
+        content: "not public",
+        to: new URL("https://bbs.example.test/users/alice"),
+      }),
+    });
+
+    await processInboundCreate(inboxContext(database), create);
+
+    expect(batches).toEqual([]);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("state = 'rejected'"),
+      ),
+    ).toBe(true);
+  });
 });
 
 function inboxDatabase(
@@ -372,4 +444,42 @@ function inboxContext(database: D1Database) {
       FEDERATION_QUEUE: {} as Queue,
     },
   } as never;
+}
+
+function remoteNoteDatabase(
+  statements: Array<{ sql: string; params: unknown[] }>,
+  batches: unknown[][],
+) {
+  return {
+    prepare(sql: string) {
+      return {
+        bind(...params: unknown[]) {
+          const statement = { sql, params };
+          statements.push(statement);
+          return {
+            first: async () => {
+              if (
+                sql.includes("SELECT federation_actors.id, profiles.handle")
+              ) {
+                return { id: "user-1", handle: "alice" };
+              }
+              if (sql.includes("SELECT state FROM instance_policies")) {
+                return null;
+              }
+              if (sql.includes("SELECT blocked_at")) return null;
+              if (sql.includes("FROM federation_follows")) {
+                return { id: "https://remote.example/users/bob" };
+              }
+              return null;
+            },
+            run: async () => ({ meta: { changes: 1 } }),
+          };
+        },
+      };
+    },
+    async batch(batch: unknown[]) {
+      batches.push(batch);
+      return [];
+    },
+  } as unknown as D1Database;
 }
