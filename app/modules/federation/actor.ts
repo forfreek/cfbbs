@@ -19,6 +19,8 @@ export function personActor(origin: string, profile: PublicProfile) {
     summary: profile.bio,
     inbox: new URL(`/users/${profile.handle}/inbox`, origin).href,
     outbox: new URL(`/users/${profile.handle}/outbox`, origin).href,
+    followers: new URL(`/users/${profile.handle}/followers`, origin).href,
+    following: new URL(`/users/${profile.handle}/following`, origin).href,
     ...(profile.publicKeyPem
       ? {
           publicKey: {
