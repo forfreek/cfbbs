@@ -6,6 +6,8 @@ export {
 } from "./access.server";
 export { validateReplyInput, validateThreadInput } from "./input";
 export {
+  decodeForumThreadCursor,
+  encodeForumThreadCursor,
   listForumBoardThreads,
   listForumThreadPosts,
   loadForumBoard,

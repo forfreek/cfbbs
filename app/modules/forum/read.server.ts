@@ -31,6 +31,12 @@ export type ForumThreadSummary = ForumThread & {
   activityAt: string;
 };
 
+export type ForumThreadCursor = {
+  pinned: 0 | 1;
+  activityAt: string;
+  id: string;
+};
+
 export type ForumPost = {
   id: string;
   threadId: string;
@@ -65,11 +71,58 @@ export async function loadForumThread(database: D1Database, threadId: string) {
     .first<ForumThread>();
 }
 
+export function encodeForumThreadCursor(cursor: ForumThreadCursor) {
+  return btoa(JSON.stringify(cursor))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+}
+
+export function decodeForumThreadCursor(value: string | null) {
+  if (!value || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
+
+  try {
+    const padded = value.replaceAll("-", "+").replaceAll("_", "/");
+    const json = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
+    const parsed: unknown = JSON.parse(json);
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !("pinned" in parsed) ||
+      !("activityAt" in parsed) ||
+      !("id" in parsed)
+    ) {
+      return null;
+    }
+
+    const cursor = parsed as Record<string, unknown>;
+    if (
+      (cursor.pinned !== 0 && cursor.pinned !== 1) ||
+      typeof cursor.activityAt !== "string" ||
+      cursor.activityAt.length === 0 ||
+      typeof cursor.id !== "string" ||
+      cursor.id.length === 0
+    ) {
+      return null;
+    }
+
+    return {
+      pinned: cursor.pinned,
+      activityAt: cursor.activityAt,
+      id: cursor.id,
+    } as ForumThreadCursor;
+  } catch {
+    return null;
+  }
+}
+
 export async function listForumBoardThreads(
   database: D1Database,
   boardId: string,
   includePrivate: boolean,
+  cursor: ForumThreadCursor | null = null,
 ) {
+  const pageSize = 50;
   const visiblePosts = includePrivate
     ? ""
     : "AND first_post.visibility = 'public'";
@@ -79,12 +132,42 @@ export async function listForumBoardThreads(
   const visibleActivity = includePrivate
     ? ""
     : "AND activity_post.visibility = 'public'";
-  return database
+  const cursorPredicate = cursor
+    ? "WHERE isPinned < ? OR (isPinned = ? AND (activityAt < ? OR (activityAt = ? AND id < ?)))"
+    : "";
+  const statement = database
     .prepare(
-      `SELECT threads.id, threads.board_id AS boardId, threads.first_post_id AS firstPostId, threads.title, threads.is_pinned AS isPinned, threads.is_locked AS isLocked, first_post.visibility AS firstPostVisibility, threads.created_at AS createdAt, profiles.handle AS authorHandle, profiles.display_name AS authorName, (SELECT COUNT(*) FROM posts AS reply WHERE reply.thread_id = threads.id AND reply.id != threads.first_post_id AND reply.state = 'published' ${visibleReplies}) AS replyCount, (SELECT MAX(activity_post.published_at) FROM posts AS activity_post WHERE activity_post.thread_id = threads.id AND activity_post.state = 'published' ${visibleActivity}) AS activityAt FROM threads INNER JOIN posts AS first_post ON first_post.id = threads.first_post_id LEFT JOIN profiles ON profiles.user_id = first_post.author_user_id WHERE threads.board_id = ? AND first_post.state = 'published' ${visiblePosts} ORDER BY threads.is_pinned DESC, activityAt DESC, threads.id DESC LIMIT 50`,
+      `WITH visible_threads AS (SELECT threads.id, threads.board_id AS boardId, threads.first_post_id AS firstPostId, threads.title, threads.is_pinned AS isPinned, threads.is_locked AS isLocked, first_post.visibility AS firstPostVisibility, threads.created_at AS createdAt, profiles.handle AS authorHandle, profiles.display_name AS authorName, (SELECT COUNT(*) FROM posts AS reply WHERE reply.thread_id = threads.id AND reply.id != threads.first_post_id AND reply.state = 'published' ${visibleReplies}) AS replyCount, (SELECT MAX(activity_post.published_at) FROM posts AS activity_post WHERE activity_post.thread_id = threads.id AND activity_post.state = 'published' ${visibleActivity}) AS activityAt FROM threads INNER JOIN posts AS first_post ON first_post.id = threads.first_post_id LEFT JOIN profiles ON profiles.user_id = first_post.author_user_id WHERE threads.board_id = ? AND first_post.state = 'published' ${visiblePosts}) SELECT * FROM visible_threads ${cursorPredicate} ORDER BY isPinned DESC, activityAt DESC, id DESC LIMIT ?`,
     )
-    .bind(boardId)
-    .all<ForumThreadSummary>();
+    .bind(
+      boardId,
+      ...(cursor
+        ? [
+            cursor.pinned,
+            cursor.pinned,
+            cursor.activityAt,
+            cursor.activityAt,
+            cursor.id,
+          ]
+        : []),
+      pageSize + 1,
+    );
+  const page = await statement.all<ForumThreadSummary>();
+  const results = page.results.slice(0, pageSize);
+  const finalThread = results.at(-1);
+
+  return {
+    ...page,
+    results,
+    nextCursor:
+      page.results.length > pageSize && finalThread
+        ? encodeForumThreadCursor({
+            pinned: finalThread.isPinned ? 1 : 0,
+            activityAt: finalThread.activityAt,
+            id: finalThread.id,
+          })
+        : null,
+  };
 }
 
 export async function listForumThreadPosts(

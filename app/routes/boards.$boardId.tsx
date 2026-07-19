@@ -9,6 +9,7 @@ import {
 } from "@/modules/forum/access.server";
 import { validateThreadInput } from "@/modules/forum/input";
 import {
+  decodeForumThreadCursor,
   listForumBoardThreads,
   loadForumBoard,
 } from "@/modules/forum/read.server";
@@ -16,6 +17,12 @@ import { createThread } from "@/modules/forum/threads/service";
 import { getSession } from "@/modules/identity/auth.server";
 
 async function boardPageData(request: Request, env: Env, boardId: string) {
+  const cursorValue = new URL(request.url).searchParams.get("cursor");
+  const cursor = decodeForumThreadCursor(cursorValue);
+  if (cursorValue !== null && !cursor) {
+    throw new Response("Invalid cursor", { status: 400 });
+  }
+
   const board = await loadForumBoard(env.DB, boardId);
   if (!board) throw new Response("Not found", { status: 404 });
 
@@ -33,8 +40,9 @@ async function boardPageData(request: Request, env: Env, boardId: string) {
     env.DB,
     board.id,
     boardIsPrivate || canViewPrivate,
+    cursor,
   );
-  return { board, session, canCreate, threads: threads.results };
+  return { board, session, canCreate, threads };
 }
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
@@ -162,9 +170,9 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
 
       <section className="mt-10">
         <h2 className="text-xl font-semibold">主题</h2>
-        {threads.length > 0 ? (
+        {threads.results.length > 0 ? (
           <ol className="mt-4 divide-y border-y">
-            {threads.map((thread) => (
+            {threads.results.map((thread) => (
               <li key={thread.id} className="py-4">
                 <Link
                   className="font-medium hover:text-blue-700"
@@ -183,6 +191,14 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
         ) : (
           <p className="mt-4 text-sm text-slate-500">暂无可见主题。</p>
         )}
+        {threads.nextCursor ? (
+          <Link
+            className="mt-4 inline-block text-sm text-blue-700 hover:underline"
+            to={`?cursor=${threads.nextCursor}`}
+          >
+            加载更多主题
+          </Link>
+        ) : null}
       </section>
     </main>
   );
