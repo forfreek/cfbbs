@@ -232,7 +232,7 @@ Invariants:
 
 - [ ] Support `Follow`, `Accept`, `Reject`, `Undo`, `Create`, `Update`, `Delete`, and `Like`/`Undo Like`.
 - [ ] Reject unsigned or replayed activities, deduplicate Activity IDs, verify Actor/Object ownership, and sanitize remote HTML.
-- [ ] Restrict remote fetches to HTTPS with bounded redirects, response size, timeout, and acceptable ActivityStreams content types.
+- [x] Restrict remote fetches to HTTPS with bounded redirects, response size, timeout, and acceptable ActivityStreams content types.
 - [ ] Process Fedify Queue messages in the Worker queue handler and route permanent failures to the DLQ.
 - [ ] Dispatch D1 outbox events idempotently; Cron retries pending rows and marks terminal failures without changing local post success.
 - [ ] Place remote replies into local threads and other followed remote Notes into the following feed.
