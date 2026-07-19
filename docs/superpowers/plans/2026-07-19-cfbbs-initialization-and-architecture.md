@@ -258,12 +258,12 @@ Invariants:
 - [ ] Obtain the actual base domain and use `bbs-test.<base-domain>` and `misskey-test.<base-domain>` unless the user supplies different complete names.
 - [ ] Authenticate Wrangler, create the test D1/KV/Queue/DLQ resources, store their IDs only in Wrangler configuration, and upload secrets with `wrangler secret put`.
 - [ ] Deploy the `test` Worker and apply test D1 migrations before enabling public federation.
-- [ ] Create an on-demand Compose stack pinned to Misskey 2026.6.0 with independent PostgreSQL and Redis services, persistent test volumes, health checks, and an approximate aggregate 2.5 GiB memory ceiling.
+- [x] Create an on-demand Compose stack pinned to Misskey 2026.6.0 with independent PostgreSQL and Redis services, persistent test volumes, health checks, and an approximate aggregate 2.5 GiB memory ceiling.
 - [ ] Configure the existing Nginx to proxy the Misskey hostname over HTTPS without modifying unrelated virtual hosts.
 - [ ] Verify WebFinger and Actor discovery in both directions before creating test follows.
 - [ ] Exercise bidirectional follow/unfollow, BBS topic delivery, Misskey reply, BBS reply, bidirectional likes, update, delete, instance block, and delivery recovery after stopping Misskey.
 - [ ] Verify private-board objects return no ActivityPub representation and never appear in Worker delivery logs or Misskey.
-- [ ] Document start, stop, backup, reset, log inspection, and teardown commands for the test stack.
+- [x] Document start, stop, backup, reset, log inspection, and teardown commands for the test stack.
 - [ ] Commit with `test: add Misskey interoperability environment`.
 
 **Milestone 3 acceptance:** The real test Worker and pinned Misskey instance complete the interoperability matrix over HTTPS. Queue failure and recovery are observable, moderation controls work, and private content is absent from all federation surfaces.
