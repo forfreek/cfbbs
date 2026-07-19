@@ -2,13 +2,15 @@ import { isSafeRemoteUrl } from "./remote-url";
 
 type Statement = { sql: string; params: readonly unknown[] };
 
-export type RemoteFollower = {
+export type RemoteActor = {
   uri: string;
   inboxUrl: string;
   sharedInboxUrl: string | null;
   publicKeyPem: string;
   name: string;
 };
+
+export type RemoteFollower = RemoteActor;
 
 export type AcceptedRemoteFollow = {
   eventId: string;
@@ -17,6 +19,14 @@ export type AcceptedRemoteFollow = {
   localHandle: string;
   origin: string;
   follower: RemoteFollower;
+};
+
+export type OutboundFollow = {
+  eventId: string;
+  localActorId: string;
+  localHandle: string;
+  origin: string;
+  following: RemoteActor;
 };
 
 function validateRemoteFollower(follower: RemoteFollower) {
@@ -37,6 +47,27 @@ function validateRemoteFollower(follower: RemoteFollower) {
   if (!follower.publicKeyPem.trim()) {
     throw new Error("Remote follower must provide a public key.");
   }
+}
+
+function remoteActorUpsertStatement(
+  actor: RemoteActor,
+  now: string,
+): Statement {
+  return {
+    sql: "INSERT INTO federation_actors (id, uri, handle, inbox_url, shared_inbox_url, outbox_url, followers_url, public_key_pem, name, summary_html, avatar_url, is_local, blocked_at, last_fetched_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, '', NULL, 0, NULL, ?, ?, ?) ON CONFLICT(uri) DO UPDATE SET inbox_url = excluded.inbox_url, shared_inbox_url = excluded.shared_inbox_url, public_key_pem = excluded.public_key_pem, name = excluded.name, last_fetched_at = excluded.last_fetched_at, updated_at = excluded.updated_at",
+    params: [
+      actor.uri,
+      actor.uri,
+      `remote:${actor.uri}`,
+      actor.inboxUrl,
+      actor.sharedInboxUrl,
+      actor.publicKeyPem,
+      actor.name.trim() || actor.uri,
+      now,
+      now,
+      now,
+    ],
+  };
 }
 
 export function createFollowAcceptActivity(input: AcceptedRemoteFollow) {
@@ -67,21 +98,7 @@ export function acceptedRemoteFollowStatements(
     input.follower.sharedInboxUrl ?? input.follower.inboxUrl;
   const activity = createFollowAcceptActivity(input);
   return [
-    {
-      sql: "INSERT INTO federation_actors (id, uri, handle, inbox_url, shared_inbox_url, outbox_url, followers_url, public_key_pem, name, summary_html, avatar_url, is_local, blocked_at, last_fetched_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, '', NULL, 0, NULL, ?, ?, ?) ON CONFLICT(uri) DO UPDATE SET inbox_url = excluded.inbox_url, shared_inbox_url = excluded.shared_inbox_url, public_key_pem = excluded.public_key_pem, name = excluded.name, last_fetched_at = excluded.last_fetched_at, updated_at = excluded.updated_at",
-      params: [
-        input.follower.uri,
-        input.follower.uri,
-        `remote:${input.follower.uri}`,
-        input.follower.inboxUrl,
-        input.follower.sharedInboxUrl,
-        input.follower.publicKeyPem,
-        input.follower.name.trim() || input.follower.uri,
-        now,
-        now,
-        now,
-      ],
-    },
+    remoteActorUpsertStatement(input.follower, now),
     {
       sql: "INSERT INTO federation_follows (id, follower_actor_id, following_actor_id, follow_activity_id, state, created_at, updated_at) VALUES (?, ?, ?, ?, 'accepted', ?, ?) ON CONFLICT(follower_actor_id, following_actor_id) DO UPDATE SET follow_activity_id = excluded.follow_activity_id, state = 'accepted', updated_at = excluded.updated_at",
       params: [
@@ -118,6 +135,72 @@ export function acceptedRemoteFollowStatements(
   ];
 }
 
+export function createOutboundFollowActivity(input: OutboundFollow) {
+  const actor = new URL(`/users/${input.localHandle}`, input.origin).href;
+  return {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id: new URL(`/activities/follow/${input.eventId}`, input.origin).href,
+    type: "Follow",
+    actor,
+    object: input.following.uri,
+    to: input.following.uri,
+  };
+}
+
+export function outboundFollowStatements(
+  input: OutboundFollow,
+  now: string,
+): Statement[] {
+  validateRemoteFollower(input.following);
+  if (
+    !/^[a-zA-Z0-9_-]{1,128}$/.test(input.eventId) ||
+    !input.localActorId ||
+    !input.localHandle
+  ) {
+    throw new Error("Outbound Follow identifiers are required.");
+  }
+
+  const activity = createOutboundFollowActivity(input);
+  const targetInboxUrl =
+    input.following.sharedInboxUrl ?? input.following.inboxUrl;
+  return [
+    remoteActorUpsertStatement(input.following, now),
+    {
+      sql: "INSERT INTO federation_follows (id, follower_actor_id, following_actor_id, follow_activity_id, state, created_at, updated_at) VALUES (?, ?, ?, ?, 'pending', ?, ?) ON CONFLICT(follower_actor_id, following_actor_id) DO UPDATE SET follow_activity_id = excluded.follow_activity_id, state = 'pending', updated_at = excluded.updated_at",
+      params: [
+        crypto.randomUUID(),
+        input.localActorId,
+        input.following.uri,
+        activity.id,
+        now,
+        now,
+      ],
+    },
+    {
+      sql: "INSERT OR IGNORE INTO federation_outbox_events (id, actor_id, aggregate_type, aggregate_id, activity_type, activity_json, delivery_scope, state, queued_at, created_at, updated_at) VALUES (?, ?, 'follow', ?, 'Follow', ?, 'direct', 'pending', NULL, ?, ?)",
+      params: [
+        input.eventId,
+        input.localActorId,
+        activity.id,
+        JSON.stringify(activity),
+        now,
+        now,
+      ],
+    },
+    {
+      sql: "INSERT OR IGNORE INTO federation_deliveries (id, outbox_event_id, target_inbox_url, state, attempts, next_attempt_at, last_error, delivered_at, created_at, updated_at) VALUES (?, ?, ?, 'pending', 0, ?, NULL, NULL, ?, ?)",
+      params: [
+        crypto.randomUUID(),
+        input.eventId,
+        targetInboxUrl,
+        now,
+        now,
+        now,
+      ],
+    },
+  ];
+}
+
 export async function acceptRemoteFollow(
   database: D1Database,
   input: AcceptedRemoteFollow,
@@ -125,6 +208,18 @@ export async function acceptRemoteFollow(
   const now = new Date().toISOString();
   await database.batch(
     acceptedRemoteFollowStatements(input, now).map((statement) =>
+      database.prepare(statement.sql).bind(...statement.params),
+    ),
+  );
+}
+
+export async function createOutboundFollow(
+  database: D1Database,
+  input: OutboundFollow,
+) {
+  const now = new Date().toISOString();
+  await database.batch(
+    outboundFollowStatements(input, now).map((statement) =>
       database.prepare(statement.sql).bind(...statement.params),
     ),
   );

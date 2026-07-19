@@ -3,10 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   acceptRemoteFollow,
   acceptedRemoteFollowStatements,
+  createOutboundFollow,
+  createOutboundFollowActivity,
   createFollowAcceptActivity,
+  outboundFollowStatements,
   settleOutboundFollow,
   undoRemoteFollow,
   type AcceptedRemoteFollow,
+  type OutboundFollow,
 } from "@/modules/federation/follows";
 
 const input: AcceptedRemoteFollow = {
@@ -22,6 +26,14 @@ const input: AcceptedRemoteFollow = {
     publicKeyPem: "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
     name: "Bob",
   },
+};
+
+const outboundInput: OutboundFollow = {
+  eventId: "follow-event-1",
+  localActorId: "user-1",
+  localHandle: "alice",
+  origin: "https://bbs.example.test",
+  following: input.follower,
 };
 
 describe("accepted remote follows", () => {
@@ -144,5 +156,53 @@ describe("accepted remote follows", () => {
         input.follower.uri,
       ]),
     );
+  });
+
+  it("creates a direct Follow activity addressed to the remote Actor", () => {
+    expect(createOutboundFollowActivity(outboundInput)).toEqual({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://bbs.example.test/activities/follow/follow-event-1",
+      type: "Follow",
+      actor: "https://bbs.example.test/users/alice",
+      object: "https://remote.example/users/bob",
+      to: "https://remote.example/users/bob",
+    });
+  });
+
+  it("atomically saves an outbound Follow and its direct delivery", () => {
+    const statements = outboundFollowStatements(
+      outboundInput,
+      "2026-07-19T00:00:00.000Z",
+    );
+
+    expect(statements).toHaveLength(4);
+    expect(statements[0]?.sql).toContain("ON CONFLICT(uri)");
+    expect(statements[1]?.sql).toContain("state = 'pending'");
+    expect(statements[2]?.sql).toContain("'Follow'");
+    expect(statements[2]?.sql).toContain("'direct'");
+    expect(statements[3]?.params).toContain(
+      "https://remote.example/inbox/shared",
+    );
+  });
+
+  it("uses one D1 batch for the outbound relationship and delivery", async () => {
+    const batches: unknown[][] = [];
+    const database = {
+      prepare(sql: string) {
+        return {
+          bind(...params: unknown[]) {
+            return { sql, params };
+          },
+        };
+      },
+      async batch(statements: unknown[]) {
+        batches.push(statements);
+        return [];
+      },
+    } as unknown as D1Database;
+
+    await createOutboundFollow(database, outboundInput);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(4);
   });
 });
