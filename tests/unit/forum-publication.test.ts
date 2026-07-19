@@ -8,10 +8,10 @@ type CapturedStatement = { sql: string; params: unknown[] };
 
 function forumDatabase({
   profile = { handle: "alice" },
-  thread = { is_locked: 0 },
+  thread = { is_locked: 0, firstPostAuthorUserId: null },
 }: {
   profile?: { handle: string } | null;
-  thread?: { is_locked: number } | null;
+  thread?: { is_locked: number; firstPostAuthorUserId: string | null } | null;
 } = {}) {
   const batches: CapturedStatement[][] = [];
   const database = {
@@ -21,7 +21,7 @@ function forumDatabase({
           if (sql.startsWith("SELECT handle FROM profiles")) {
             return { first: async () => profile };
           }
-          if (sql.startsWith("SELECT is_locked FROM threads")) {
+          if (sql.startsWith("SELECT threads.is_locked")) {
             return { first: async () => thread };
           }
           return { sql, params };
@@ -129,5 +129,26 @@ describe("public post federation publication", () => {
         statement.sql.includes("federation_outbox_events"),
       ),
     ).toBe(false);
+  });
+
+  it("creates a reply notification in the same batch for the thread author", async () => {
+    const { database, batches } = forumDatabase({
+      thread: { is_locked: 0, firstPostAuthorUserId: "thread-author" },
+    });
+    await createReply(database, {
+      postId: "reply-1",
+      revisionId: "revision-1",
+      threadId: "thread-1",
+      parentPostId: "post-1",
+      authorUserId: "reply-author",
+      markdown: "Reply",
+      visibility: "private",
+    });
+
+    expect(
+      batches[0].some((statement) =>
+        statement.sql.includes("INSERT INTO notifications"),
+      ),
+    ).toBe(true);
   });
 });

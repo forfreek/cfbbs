@@ -17,9 +17,11 @@ export type NewReply = {
 
 export async function createReply(database: D1Database, input: NewReply) {
   const thread = await database
-    .prepare("SELECT is_locked FROM threads WHERE id = ?")
+    .prepare(
+      "SELECT threads.is_locked, first_post.author_user_id AS firstPostAuthorUserId FROM threads INNER JOIN posts AS first_post ON first_post.id = threads.first_post_id WHERE threads.id = ?",
+    )
     .bind(input.threadId)
-    .first<{ is_locked: number }>();
+    .first<{ is_locked: number; firstPostAuthorUserId: string | null }>();
   if (!thread) throw new Error("Thread not found.");
   if (thread.is_locked) throw new Error("Thread is locked.");
   const now = new Date().toISOString();
@@ -69,6 +71,23 @@ export async function createReply(database: D1Database, input: NewReply) {
         "UPDATE threads SET post_count = post_count + 1, last_activity_at = ?, updated_at = ? WHERE id = ?",
       )
       .bind(now, now, input.threadId),
+    ...(thread.firstPostAuthorUserId &&
+    thread.firstPostAuthorUserId !== input.authorUserId
+      ? [
+          database
+            .prepare(
+              "INSERT INTO notifications (id, recipient_user_id, actor_id, type, thread_id, post_id, read_at, created_at) VALUES (?, ?, ?, 'reply', ?, ?, NULL, ?)",
+            )
+            .bind(
+              crypto.randomUUID(),
+              thread.firstPostAuthorUserId,
+              input.authorUserId,
+              input.threadId,
+              input.postId,
+              now,
+            ),
+        ]
+      : []),
     ...(outbox ? [outbox] : []),
   ]);
 }
