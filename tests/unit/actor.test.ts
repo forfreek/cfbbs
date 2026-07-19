@@ -15,3 +15,24 @@ describe("ActivityPub Person", () =>
     });
     expect(actor).not.toHaveProperty("federationPrivateKeyEncrypted");
   }));
+
+describe("ActivityPub actor signing key", () =>
+  it("publishes only the public PEM under the stable actor key ID", () => {
+    const actor = personActor("https://bbs.example.test", {
+      handle: "alice",
+      displayName: "Alice",
+      bio: "Hello",
+      avatarUrl: null,
+      publicKeyPem:
+        "-----BEGIN PUBLIC KEY-----\\npublic\\n-----END PUBLIC KEY-----",
+    });
+
+    expect(actor).toMatchObject({
+      publicKey: {
+        id: "https://bbs.example.test/users/alice#main-key",
+        owner: "https://bbs.example.test/users/alice",
+        publicKeyPem:
+          "-----BEGIN PUBLIC KEY-----\\npublic\\n-----END PUBLIC KEY-----",
+      },
+    });
+  }));

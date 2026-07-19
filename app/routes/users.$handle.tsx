@@ -1,9 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Link } from "react-router";
 
 import type { Route } from "./+types/users.$handle";
 import { createDatabase } from "@/db/client.server";
-import { profiles } from "@/db/schema";
+import { federationActors, profiles } from "@/db/schema";
 import { validateHandle } from "@/modules/identity/handle";
 import { personActor } from "@/modules/federation/actor";
 
@@ -19,8 +19,20 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     accept.includes("application/activity+json") ||
     accept.includes("application/ld+json")
   ) {
+    const actor = await createDatabase(
+      context.cloudflare.env.DB,
+    ).query.federationActors.findFirst({
+      where: and(
+        eq(federationActors.id, profile.userId),
+        eq(federationActors.isLocal, true),
+      ),
+    });
+    if (!actor) throw new Response("Not found", { status: 404 });
     return Response.json(
-      personActor(context.cloudflare.env.APP_ORIGIN, profile),
+      personActor(context.cloudflare.env.APP_ORIGIN, {
+        ...profile,
+        publicKeyPem: actor.publicKeyPem,
+      }),
       { headers: { "content-type": "application/activity+json" } },
     );
   }

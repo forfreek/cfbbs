@@ -8,13 +8,14 @@ import {
   authSessions,
   authUsers,
   authVerifications,
-  profiles,
 } from "@/db/schema";
+import { createLocalActor } from "@/modules/federation/local-actor";
 
 import { normalizeHandle, validateHandle } from "./handle";
 
 export type AuthEnvironment = Pick<Env, "DB" | "APP_ORIGIN"> & {
   BETTER_AUTH_SECRET?: string;
+  FEDERATION_KEY_ENCRYPTION_SECRET?: string;
 };
 
 export function getAuthSettings(environment: AuthEnvironment) {
@@ -81,17 +82,14 @@ export function createAuth(environment: AuthEnvironment) {
               throw new Error("A valid federation handle is required.");
             }
 
-            const now = new Date().toISOString();
-            await database
-              .insert(profiles)
-              .values({
-                userId: user.id,
-                handle: handle.value,
-                displayName: user.name,
-                createdAt: now,
-                updatedAt: now,
-              })
-              .onConflictDoNothing();
+            await createLocalActor(environment.DB, {
+              userId: user.id,
+              handle: handle.value,
+              displayName: user.name,
+              origin: settings.origin,
+              encryptionSecret:
+                environment.FEDERATION_KEY_ENCRYPTION_SECRET ?? "",
+            });
           },
         },
       },

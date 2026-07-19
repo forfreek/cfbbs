@@ -5,6 +5,7 @@ export type PublicProfile = {
   displayName: string;
   bio: string;
   avatarUrl: string | null;
+  publicKeyPem?: string | null;
 };
 
 export function personActor(origin: string, profile: PublicProfile) {
@@ -18,6 +19,15 @@ export function personActor(origin: string, profile: PublicProfile) {
     summary: profile.bio,
     inbox: new URL(`/users/${profile.handle}/inbox`, origin).href,
     outbox: new URL(`/users/${profile.handle}/outbox`, origin).href,
+    ...(profile.publicKeyPem
+      ? {
+          publicKey: {
+            id: `${id}#main-key`,
+            owner: id,
+            publicKeyPem: profile.publicKeyPem,
+          },
+        }
+      : {}),
     ...(profile.avatarUrl
       ? {
           icon: { type: "Image", mediaType: "image/*", url: profile.avatarUrl },
