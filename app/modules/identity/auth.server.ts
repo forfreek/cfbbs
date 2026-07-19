@@ -13,7 +13,7 @@ import {
 
 import { normalizeHandle, validateHandle } from "./handle";
 
-type AuthEnvironment = Pick<Env, "DB" | "APP_ORIGIN"> & {
+export type AuthEnvironment = Pick<Env, "DB" | "APP_ORIGIN"> & {
   BETTER_AUTH_SECRET?: string;
 };
 
@@ -104,4 +104,11 @@ export async function handleAuthRequest(
   environment: AuthEnvironment,
 ) {
   return createAuth(environment).handler(request);
+}
+
+export async function getSession(
+  request: Request,
+  environment: AuthEnvironment,
+) {
+  return createAuth(environment).api.getSession({ headers: request.headers });
 }
