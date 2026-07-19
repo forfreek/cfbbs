@@ -11,6 +11,7 @@ type OutboxEvent = {
   activityJson: string;
   actorUri: string;
   encryptedPrivateKey: string | null;
+  deliveryScope: "followers" | "direct";
 };
 
 type FollowerInbox = { targetInboxUrl: string };
@@ -55,7 +56,7 @@ export async function deliverOutboxEvent(
 ): Promise<OutboxDeliverySummary | null> {
   const event = await database
     .prepare(
-      "SELECT federation_outbox_events.id, federation_outbox_events.actor_id AS actorId, federation_outbox_events.activity_json AS activityJson, federation_actors.uri AS actorUri, profiles.federation_private_key_encrypted AS encryptedPrivateKey FROM federation_outbox_events INNER JOIN federation_actors ON federation_actors.id = federation_outbox_events.actor_id INNER JOIN profiles ON profiles.user_id = federation_outbox_events.actor_id WHERE federation_outbox_events.id = ? AND federation_outbox_events.state IN ('pending', 'queued') AND federation_actors.is_local = 1",
+      "SELECT federation_outbox_events.id, federation_outbox_events.actor_id AS actorId, federation_outbox_events.activity_json AS activityJson, federation_outbox_events.delivery_scope AS deliveryScope, federation_actors.uri AS actorUri, profiles.federation_private_key_encrypted AS encryptedPrivateKey FROM federation_outbox_events INNER JOIN federation_actors ON federation_actors.id = federation_outbox_events.actor_id INNER JOIN profiles ON profiles.user_id = federation_outbox_events.actor_id WHERE federation_outbox_events.id = ? AND federation_outbox_events.state IN ('pending', 'queued') AND federation_actors.is_local = 1",
     )
     .bind(input.eventId)
     .first<OutboxEvent>();
@@ -65,12 +66,14 @@ export async function deliverOutboxEvent(
   }
 
   const [followers, deliveries] = await Promise.all([
-    database
-      .prepare(
-        "SELECT DISTINCT COALESCE(NULLIF(TRIM(federation_actors.shared_inbox_url), ''), federation_actors.inbox_url) AS targetInboxUrl FROM federation_follows INNER JOIN federation_actors ON federation_actors.id = federation_follows.follower_actor_id WHERE federation_follows.following_actor_id = ? AND federation_follows.state = 'accepted' AND federation_actors.blocked_at IS NULL",
-      )
-      .bind(event.actorId)
-      .all<FollowerInbox>(),
+    event.deliveryScope === "followers"
+      ? database
+          .prepare(
+            "SELECT DISTINCT COALESCE(NULLIF(TRIM(federation_actors.shared_inbox_url), ''), federation_actors.inbox_url) AS targetInboxUrl FROM federation_follows INNER JOIN federation_actors ON federation_actors.id = federation_follows.follower_actor_id WHERE federation_follows.following_actor_id = ? AND federation_follows.state = 'accepted' AND federation_actors.blocked_at IS NULL",
+          )
+          .bind(event.actorId)
+          .all<FollowerInbox>()
+      : Promise.resolve({ results: [] as FollowerInbox[] }),
     database
       .prepare(
         "SELECT target_inbox_url AS targetInboxUrl, state, attempts, next_attempt_at AS nextAttemptAt FROM federation_deliveries WHERE outbox_event_id = ?",
@@ -82,7 +85,10 @@ export async function deliverOutboxEvent(
     deliveries.results.map((delivery) => [delivery.targetInboxUrl, delivery]),
   );
   const targetInboxUrls = [
-    ...new Set(followers.results.map((follower) => follower.targetInboxUrl)),
+    ...new Set([
+      ...followers.results.map((follower) => follower.targetInboxUrl),
+      ...deliveries.results.map((delivery) => delivery.targetInboxUrl),
+    ]),
   ];
   const now = new Date();
   let delivered = 0;

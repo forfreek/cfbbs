@@ -513,6 +513,11 @@ export const federationOutboxEvents = sqliteTable(
       enum: ["Create", "Update", "Delete", "Follow", "Undo", "Like"],
     }).notNull(),
     activityJson: text("activity_json").notNull(),
+    deliveryScope: text("delivery_scope", {
+      enum: ["followers", "direct"],
+    })
+      .notNull()
+      .default("followers"),
     state: text("state", { enum: ["pending", "queued", "delivered", "failed"] })
       .notNull()
       .default("pending"),

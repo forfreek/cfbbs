@@ -7,8 +7,10 @@ type CapturedStatement = { sql: string; params: unknown[] };
 function deliveryDatabase({
   targets = ["https://remote.example/inbox"],
   deliveries = [],
+  deliveryScope = "followers",
 }: {
   targets?: string[];
+  deliveryScope?: "followers" | "direct";
   deliveries?: Array<{
     targetInboxUrl: string;
     state: "pending" | "delivered" | "failed";
@@ -23,6 +25,7 @@ function deliveryDatabase({
     activityJson: JSON.stringify({ type: "Create" }),
     actorUri: "https://bbs.example.test/users/alice",
     encryptedPrivateKey: "encrypted-key",
+    deliveryScope,
   };
   return {
     database: {
@@ -148,5 +151,32 @@ describe("federation delivery worker", () => {
     expect(sent).toBe(false);
     expect(statements).toHaveLength(1);
     expect(statements[0]?.sql).toContain("federation_outbox_events");
+  });
+
+  it("delivers a direct event only to its pre-seeded inbox", async () => {
+    const { database } = deliveryDatabase({
+      targets: [],
+      deliveryScope: "direct",
+      deliveries: [
+        {
+          targetInboxUrl: "https://remote.example/inbox",
+          state: "pending",
+          attempts: 0,
+        },
+      ],
+    });
+    const sentTo: string[] = [];
+
+    await expect(
+      deliverOutboxEvent(
+        database,
+        { eventId: "event-1", encryptionSecret: "secret" },
+        async (delivery) => {
+          sentTo.push(delivery.targetInboxUrl);
+          return new Response(null, { status: 202 });
+        },
+      ),
+    ).resolves.toMatchObject({ delivered: 1, state: "delivered" });
+    expect(sentTo).toEqual(["https://remote.example/inbox"]);
   });
 });

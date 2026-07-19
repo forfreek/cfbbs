@@ -68,7 +68,7 @@ export async function publicPostOutboxStatement(
   });
   return database
     .prepare(
-      "INSERT INTO federation_outbox_events (id, actor_id, aggregate_type, aggregate_id, activity_type, activity_json, state, queued_at, created_at, updated_at) VALUES (?, ?, 'post', ?, 'Create', ?, 'pending', NULL, ?, ?)",
+      "INSERT INTO federation_outbox_events (id, actor_id, aggregate_type, aggregate_id, activity_type, activity_json, delivery_scope, state, queued_at, created_at, updated_at) VALUES (?, ?, 'post', ?, 'Create', ?, 'followers', 'pending', NULL, ?, ?)",
     )
     .bind(
       input.publication.eventId,
