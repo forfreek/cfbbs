@@ -10,46 +10,36 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 
-const topics = [
-  ["CFBBS v0.5.0 发布：联邦身份与跨站关注", "cloudsailor", "12", "23 分钟前"],
-  [
-    "如何为 Cloudflare Workers 选择合适的存储方案？",
-    "wintermute",
-    "8",
-    "1 小时前",
-  ],
-  ["在 Workers 上实现 Server-Sent Events 的实践", "imnks", "6", "2 小时前"],
-  ["D1 事务与一致性：一些实战经验", "karaage", "4", "3 小时前"],
-  ["使用 Hono + Workers 搭建 REST API 的一些心得", "echozy", "3", "4 小时前"],
-  ["关于联邦关注：设计思路与实现细节", "subsquid", "15", "5 小时前"],
-  ["前端资源加载优化：一些可落地的方案", "lucas", "7", "6 小时前"],
-  ["将旧论坛数据导入 CFBBS 的工具脚本分享", "saturnian", "2", "8 小时前"],
-];
+import type { Route } from "./+types/home";
+import {
+  boardGroups,
+  loadPublicHome,
+  type HomeBoard,
+} from "@/modules/forum/home/service";
 
-const activity = [
-  "cloudsailor 发布了主题",
-  "wintermute 回复了主题",
-  "imnks 发布了主题",
-  "subsquid 回复了主题",
-  "lucas 回复了主题",
-];
-
-function BoardGroup({ title, items }: { title: string; items: string[] }) {
+function BoardGroup({
+  board,
+  items,
+}: {
+  board: HomeBoard;
+  items: Array<HomeBoard & { depth: number }>;
+}) {
   return (
     <section className="mt-5">
       <h2 className="flex items-center gap-1 text-sm font-semibold">
         <ChevronDown className="size-3.5" />
-        {title}
+        {board.title}
       </h2>
       <ul className="mt-2 space-y-1">
         {items.map((item) => (
-          <li key={item}>
+          <li key={item.id}>
             <Link
               className="text-muted-foreground hover:bg-muted hover:text-foreground flex items-center gap-2 rounded-md px-2 py-1.5 text-sm"
               to="/"
+              style={{ paddingLeft: `${0.5 + item.depth * 0.75}rem` }}
             >
               <Folder className="size-3.5" />
-              {item}
+              {item.title}
             </Link>
           </li>
         ))}
@@ -65,7 +55,18 @@ export function meta() {
   ];
 }
 
-export default function Home() {
+export async function loader({ context }: Route.LoaderArgs) {
+  return loadPublicHome(context.cloudflare.env.DB);
+}
+
+function formatActivityTime(value: string) {
+  return value.slice(0, 16).replace("T", " ");
+}
+
+export default function Home({ loaderData }: Route.ComponentProps) {
+  const groups = boardGroups(loaderData.boards);
+  const activity = loaderData.topics.slice(0, 5);
+
   return (
     <main id="main-content" className="min-h-screen bg-white text-slate-900">
       <a
@@ -141,18 +142,13 @@ export default function Home() {
           </nav>
           <div className="my-5 border-t" />
           <h2 className="px-2 text-sm font-semibold">板块导航</h2>
-          <BoardGroup
-            title="CFBBS"
-            items={["公告", "反馈与建议", "开发者交流", "产品与设计"]}
-          />
-          <BoardGroup
-            title="技术与讨论"
-            items={["编程语言", "前端开发", "后端开发", "基础设施", "开源项目"]}
-          />
-          <BoardGroup
-            title="生活与兴趣"
-            items={["生活分享", "摄影与旅行", "阅读与写作", "音乐与电影"]}
-          />
+          {groups.length > 0 ? (
+            groups.map((group) => (
+              <BoardGroup key={group.board.id} {...group} />
+            ))
+          ) : (
+            <p className="px-2 py-5 text-sm text-slate-500">暂无公开板块。</p>
+          )}
         </aside>
         <section className="min-w-0 px-7 py-8">
           <div className="flex items-center justify-between">
@@ -179,29 +175,40 @@ export default function Home() {
             <span>时间</span>
           </div>
           <div>
-            {topics.map(([title, author, replies, time], index) => (
+            {loaderData.topics.map((topic, index) => (
               <article
-                key={title}
+                key={topic.id}
                 className="grid grid-cols-[minmax(0,1fr)_80px_44px_80px] gap-3 border-b py-4 text-sm"
               >
                 <Link
                   className="truncate font-medium hover:text-blue-700"
                   to="/"
                 >
-                  {title}
-                  {index === 0 || index === 4 ? (
+                  {topic.title}
+                  {index === 0 ? (
                     <span className="ml-2 inline-block size-1.5 rounded-full bg-blue-600 align-middle" />
                   ) : null}
                 </Link>
-                <span className="truncate text-slate-500">{author}</span>
-                <span className="text-slate-500">{replies}</span>
-                <span className="text-right text-slate-500">{time}</span>
+                <span className="truncate text-slate-500">
+                  {topic.authorName}
+                </span>
+                <span className="text-slate-500">{topic.replyCount}</span>
+                <span className="text-right text-slate-500">
+                  {formatActivityTime(topic.activityAt)}
+                </span>
               </article>
             ))}
+            {loaderData.topics.length === 0 ? (
+              <p className="py-12 text-center text-sm text-slate-500">
+                还没有公开主题。登录后即可发布第一个主题。
+              </p>
+            ) : null}
           </div>
-          <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-md border py-2.5 text-sm text-slate-500 hover:bg-slate-50">
-            加载更多主题 <ChevronDown className="size-4" />
-          </button>
+          {loaderData.topics.length > 0 ? (
+            <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-md border py-2.5 text-sm text-slate-500 hover:bg-slate-50">
+              加载更多主题 <ChevronDown className="size-4" />
+            </button>
+          ) : null}
         </section>
         <aside className="hidden space-y-5 border-l bg-slate-50/30 px-5 py-8 xl:block">
           <section className="rounded-lg border bg-white p-5">
@@ -232,8 +239,8 @@ export default function Home() {
           <section className="rounded-lg border bg-white p-5">
             <h2 className="font-semibold">最近活动</h2>
             <ul className="mt-4 space-y-4">
-              {activity.map((line, index) => (
-                <li key={line} className="flex gap-2 text-sm">
+              {activity.map((topic, index) => (
+                <li key={topic.id} className="flex gap-2 text-sm">
                   <span
                     className={
                       [
@@ -246,17 +253,22 @@ export default function Home() {
                     }
                   />
                   <span>
-                    <span className="text-slate-600">{line}</span>
+                    <span className="text-slate-600">
+                      {topic.authorName} 发布了主题
+                    </span>
                     <br />
                     <Link
                       className="line-clamp-1 text-blue-700 hover:underline"
                       to="/"
                     >
-                      联邦身份与跨站关注的讨论
+                      {topic.title}
                     </Link>
                   </span>
                 </li>
               ))}
+              {activity.length === 0 ? (
+                <li className="text-sm text-slate-500">暂无公开活动。</li>
+              ) : null}
             </ul>
             <Link
               className="mt-5 flex items-center gap-1 text-sm font-medium text-blue-700"
