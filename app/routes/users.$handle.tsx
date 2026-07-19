@@ -5,14 +5,25 @@ import type { Route } from "./+types/users.$handle";
 import { createDatabase } from "@/db/client.server";
 import { profiles } from "@/db/schema";
 import { validateHandle } from "@/modules/identity/handle";
+import { personActor } from "@/modules/federation/actor";
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, request, context }: Route.LoaderArgs) {
   const handle = validateHandle(params.handle ?? "");
   if (!handle.ok) throw new Response("Not found", { status: 404 });
   const profile = await createDatabase(
     context.cloudflare.env.DB,
   ).query.profiles.findFirst({ where: eq(profiles.handle, handle.value) });
   if (!profile) throw new Response("Not found", { status: 404 });
+  const accept = request.headers.get("accept") ?? "";
+  if (
+    accept.includes("application/activity+json") ||
+    accept.includes("application/ld+json")
+  ) {
+    return Response.json(
+      personActor(context.cloudflare.env.APP_ORIGIN, profile),
+      { headers: { "content-type": "application/activity+json" } },
+    );
+  }
   return { profile };
 }
 
