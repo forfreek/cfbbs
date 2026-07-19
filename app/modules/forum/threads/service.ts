@@ -1,4 +1,8 @@
 import { renderMarkdown } from "@/modules/forum/markdown/render";
+import {
+  publicPostOutboxStatement,
+  type FederationPostPublication,
+} from "@/modules/federation/outbox";
 
 export type NewThread = {
   threadId: string;
@@ -9,11 +13,24 @@ export type NewThread = {
   title: string;
   markdown: string;
   visibility: "public" | "private";
+  federation?: FederationPostPublication;
 };
 
 export async function createThread(database: D1Database, input: NewThread) {
   const now = new Date().toISOString();
   const html = renderMarkdown(input.markdown);
+  const outbox = await publicPostOutboxStatement(database, {
+    postId: input.postId,
+    authorUserId: input.authorUserId,
+    visibility: input.visibility,
+    state: "published",
+    origin: "local",
+    html,
+    publishedAt: now,
+    updatedAt: now,
+    parentPostId: null,
+    publication: input.federation,
+  });
   await database.batch([
     database
       .prepare(
@@ -51,5 +68,6 @@ export async function createThread(database: D1Database, input: NewThread) {
         "UPDATE threads SET first_post_id = ?, post_count = 1, last_activity_at = ?, updated_at = ? WHERE id = ?",
       )
       .bind(input.postId, now, now, input.threadId),
+    ...(outbox ? [outbox] : []),
   ]);
 }
