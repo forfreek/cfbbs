@@ -205,7 +205,14 @@ describe("Fedify inbox gateway", () => {
     );
 
     expect(batches).toHaveLength(1);
-    expect(batches[0]).toHaveLength(4);
+    expect(batches[0]).toHaveLength(5);
+    expect(
+      statements.some(
+        (statement) =>
+          statement.sql.includes("INSERT INTO notifications") &&
+          statement.sql.includes("'follow'"),
+      ),
+    ).toBe(true);
     expect(
       statements.some((statement) =>
         statement.sql.includes("state = 'processed'"),
