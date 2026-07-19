@@ -35,7 +35,7 @@ import {
   importFederationPublicKey,
 } from "./keys";
 import { isSafeRemoteUrl } from "./remote-url";
-import { storeRemoteNote } from "./remote-note";
+import { storeRemoteNote, storeRemoteThreadReply } from "./remote-note";
 
 export type FederationEnvironment = Pick<
   Env,
@@ -54,6 +54,11 @@ type LocalActorProfile = LocalActor & {
 type InstancePolicy = { state: "allowed" | "blocked" | "limited" };
 type ExistingRemoteActor = { blockedAt: string | null };
 type KnownRemoteActor = { id: string };
+type LocalReplyTarget = {
+  postId: string;
+  threadId: string;
+  isLocked: number;
+};
 
 class RejectedInboundActivity extends Error {}
 
@@ -159,6 +164,27 @@ async function loadFollowedRemoteActor(
     )
     .bind(localActorId, actorUri)
     .first<KnownRemoteActor>();
+}
+
+async function loadKnownRemoteActor(database: D1Database, actorUri: string) {
+  return database
+    .prepare(
+      "SELECT id FROM federation_actors WHERE uri = ? AND is_local = 0 AND blocked_at IS NULL LIMIT 1",
+    )
+    .bind(actorUri)
+    .first<KnownRemoteActor>();
+}
+
+async function loadLocalReplyTarget(
+  database: D1Database,
+  federationObjectId: string,
+) {
+  return database
+    .prepare(
+      "SELECT posts.id AS postId, posts.thread_id AS threadId, threads.is_locked AS isLocked FROM posts INNER JOIN threads ON threads.id = posts.thread_id INNER JOIN boards ON boards.id = threads.board_id WHERE posts.federation_object_id = ? AND posts.origin = 'local' AND posts.state = 'published' AND posts.visibility = 'public' AND boards.visibility = 'public' AND NOT EXISTS (SELECT 1 FROM board_closure AS path INNER JOIN boards AS ancestor ON ancestor.id = path.ancestor_id WHERE path.descendant_id = boards.id AND ancestor.visibility != 'public') LIMIT 1",
+    )
+    .bind(federationObjectId)
+    .first<LocalReplyTarget>();
 }
 
 async function resolveRemoteFollower(
@@ -371,10 +397,8 @@ export async function processInboundCreate(
     if (await isBlockedRemoteActor(context.data.DB, actorUri)) {
       throw new RejectedInboundActivity("Remote actor or instance is blocked.");
     }
-    if (
-      !(await loadFollowedRemoteActor(context.data.DB, localActor.id, actorUri))
-    ) {
-      throw new RejectedInboundActivity("Remote actor is not followed.");
+    if (!(await loadKnownRemoteActor(context.data.DB, actorUri))) {
+      throw new RejectedInboundActivity("Remote actor is unknown.");
     }
     const note = await create.getObject(context);
     const noteUri = note?.id?.href;
@@ -398,14 +422,39 @@ export async function processInboundCreate(
     if (!contentHtml) {
       throw new RejectedInboundActivity("Note content is required.");
     }
-    await storeRemoteNote(context.data.DB, {
+    const remoteNote = {
       uri: noteUri,
       actorUri,
       inReplyToUri: note.replyTargetId?.href ?? null,
       contentHtml,
       publishedAt: instantValue(note.published) ?? new Date().toISOString(),
       updatedAt: instantValue(note.updated),
-    });
+    };
+    const replyTarget = remoteNote.inReplyToUri
+      ? await loadLocalReplyTarget(context.data.DB, remoteNote.inReplyToUri)
+      : null;
+    if (replyTarget) {
+      if (replyTarget.isLocked) {
+        throw new RejectedInboundActivity("Thread is locked.");
+      }
+      await storeRemoteThreadReply(context.data.DB, {
+        ...remoteNote,
+        postId: crypto.randomUUID(),
+        threadId: replyTarget.threadId,
+        parentPostId: replyTarget.postId,
+      });
+    } else {
+      if (
+        !(await loadFollowedRemoteActor(
+          context.data.DB,
+          localActor.id,
+          actorUri,
+        ))
+      ) {
+        throw new RejectedInboundActivity("Remote actor is not followed.");
+      }
+      await storeRemoteNote(context.data.DB, remoteNote);
+    }
     await completeInboxActivity(context.data.DB, activityId);
   } catch (error) {
     if (error instanceof RejectedInboundActivity) {

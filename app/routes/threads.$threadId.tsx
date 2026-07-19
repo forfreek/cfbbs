@@ -132,7 +132,11 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
         {posts.map((post) => (
           <li key={post.id} className="rounded-lg border p-5">
             <p className="text-sm text-slate-500">
-              {post.authorHandle ? (
+              {post.authorActorUri ? (
+                <a className="hover:underline" href={post.authorActorUri}>
+                  {post.authorName ?? post.authorActorUri}
+                </a>
+              ) : post.authorHandle ? (
                 <Link
                   className="hover:underline"
                   to={`/users/${post.authorHandle}`}

@@ -40,4 +40,12 @@ describe("forum read privacy", () => {
     await listForumThreadPosts(database, "thread-1", false);
     expect(queries[0]).toContain("posts.visibility = 'public'");
   });
+
+  it("loads remote reply author data without treating it as a local profile", async () => {
+    const { database, queries } = readDatabase();
+
+    await listForumThreadPosts(database, "thread-1", false);
+    expect(queries[0]).toContain("LEFT JOIN federation_actors");
+    expect(queries[0]).toContain("posts.author_actor_id AS authorActorUri");
+  });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   remoteNoteQueries,
   remoteNoteStatements,
+  remoteThreadReplyStatements,
   sanitizeRemoteNoteHtml,
   validateRemoteNote,
 } from "@/modules/federation/remote-note";
@@ -52,5 +53,26 @@ describe("remote Note persistence", () => {
     expect(followedRemoteNotesQuery).toContain("state = 'accepted'");
     expect(followedRemoteNotesQuery).toContain("deleted_at IS NULL");
     expect(followedRemoteNotesQuery).toContain("blocked_at IS NULL");
+  });
+
+  it("adds a remote reply once and upserts it by federation object ID", () => {
+    const statements = remoteThreadReplyStatements(
+      {
+        ...note,
+        postId: "remote-post-1",
+        threadId: "thread-1",
+        parentPostId: "post-1",
+      },
+      "2026-07-19T00:00:00.000Z",
+    );
+    expect(statements).toHaveLength(3);
+    expect(statements[1]?.sql).toContain("NOT EXISTS");
+    expect(statements[1]?.params).toContain(note.uri);
+    expect(statements[2]?.sql).toContain(
+      "ON CONFLICT(federation_object_id) DO UPDATE",
+    );
+    expect(statements[2]?.params).toEqual(
+      expect.arrayContaining([note.actorUri, note.uri, "post-1"]),
+    );
   });
 });

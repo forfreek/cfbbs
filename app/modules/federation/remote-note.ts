@@ -22,6 +22,12 @@ export type FollowedRemoteNote = {
   updatedAt: string | null;
 };
 
+export type RemoteThreadReply = RemoteNote & {
+  postId: string;
+  threadId: string;
+  parentPostId: string;
+};
+
 const allowedTags = [
   "p",
   "br",
@@ -121,6 +127,50 @@ export async function storeRemoteNote(database: D1Database, input: RemoteNote) {
   const now = new Date().toISOString();
   await database.batch(
     remoteNoteStatements(input, now).map((statement) =>
+      database.prepare(statement.sql).bind(...statement.params),
+    ),
+  );
+}
+
+export function remoteThreadReplyStatements(
+  input: RemoteThreadReply,
+  now: string,
+): Statement[] {
+  return [
+    ...remoteNoteStatements(input, now),
+    {
+      sql: "UPDATE threads SET post_count = post_count + 1, last_activity_at = CASE WHEN last_activity_at < ? THEN ? ELSE last_activity_at END, updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM posts WHERE federation_object_id = ?)",
+      params: [
+        input.publishedAt,
+        input.publishedAt,
+        now,
+        input.threadId,
+        input.uri,
+      ],
+    },
+    {
+      sql: "INSERT INTO posts (id, thread_id, parent_post_id, author_user_id, author_actor_id, origin, state, visibility, markdown, rendered_html, federation_object_id, published_at, updated_at, deleted_at) VALUES (?, ?, ?, NULL, ?, 'remote', 'published', 'public', '', ?, ?, ?, ?, NULL) ON CONFLICT(federation_object_id) DO UPDATE SET author_actor_id = excluded.author_actor_id, state = 'published', visibility = 'public', rendered_html = excluded.rendered_html, published_at = excluded.published_at, updated_at = excluded.updated_at, deleted_at = NULL",
+      params: [
+        input.postId,
+        input.threadId,
+        input.parentPostId,
+        input.actorUri,
+        sanitizeRemoteNoteHtml(input.contentHtml),
+        input.uri,
+        input.publishedAt,
+        input.updatedAt ?? now,
+      ],
+    },
+  ];
+}
+
+export async function storeRemoteThreadReply(
+  database: D1Database,
+  input: RemoteThreadReply,
+) {
+  const now = new Date().toISOString();
+  await database.batch(
+    remoteThreadReplyStatements(input, now).map((statement) =>
       database.prepare(statement.sql).bind(...statement.params),
     ),
   );

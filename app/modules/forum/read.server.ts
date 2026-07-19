@@ -32,6 +32,7 @@ export type ForumPost = {
   authorUserId: string | null;
   authorHandle: string | null;
   authorName: string | null;
+  authorActorUri: string | null;
   renderedHtml: string;
   visibility: "public" | "private";
   likeCount: number;
@@ -89,7 +90,7 @@ export async function listForumThreadPosts(
   const visibility = includePrivate ? "" : "AND posts.visibility = 'public'";
   return database
     .prepare(
-      `SELECT posts.id, posts.thread_id AS threadId, posts.parent_post_id AS parentPostId, posts.author_user_id AS authorUserId, profiles.handle AS authorHandle, profiles.display_name AS authorName, posts.rendered_html AS renderedHtml, posts.visibility, (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id) AS likeCount, EXISTS(SELECT 1 FROM post_likes WHERE post_likes.post_id = posts.id AND post_likes.actor_id = ?) AS viewerLiked, posts.published_at AS publishedAt, posts.updated_at AS updatedAt FROM posts LEFT JOIN profiles ON profiles.user_id = posts.author_user_id WHERE posts.thread_id = ? AND posts.state = 'published' ${visibility} ORDER BY posts.published_at ASC, posts.id ASC`,
+      `SELECT posts.id, posts.thread_id AS threadId, posts.parent_post_id AS parentPostId, posts.author_user_id AS authorUserId, COALESCE(profiles.handle, federation_actors.uri) AS authorHandle, COALESCE(profiles.display_name, federation_actors.name) AS authorName, posts.author_actor_id AS authorActorUri, posts.rendered_html AS renderedHtml, posts.visibility, (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id) AS likeCount, EXISTS(SELECT 1 FROM post_likes WHERE post_likes.post_id = posts.id AND post_likes.actor_id = ?) AS viewerLiked, posts.published_at AS publishedAt, posts.updated_at AS updatedAt FROM posts LEFT JOIN profiles ON profiles.user_id = posts.author_user_id LEFT JOIN federation_actors ON federation_actors.id = posts.author_actor_id WHERE posts.thread_id = ? AND posts.state = 'published' ${visibility} ORDER BY posts.published_at ASC, posts.id ASC`,
     )
     .bind(viewerActorId, threadId)
     .all<ForumPost>();

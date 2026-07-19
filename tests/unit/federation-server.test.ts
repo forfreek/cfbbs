@@ -397,6 +397,45 @@ describe("Fedify inbox gateway", () => {
       ),
     ).toBe(true);
   });
+
+  it("adds a known remote actor's public reply to a local public thread", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const batches: unknown[][] = [];
+    const database = remoteNoteDatabase(statements, batches, {
+      replyTarget: true,
+    });
+    const remoteActor = "https://remote.example/users/bob";
+    const create = new Create({
+      id: new URL("https://remote.example/activities/create-reply-1"),
+      actor: new URL(remoteActor),
+      object: new Note({
+        id: new URL("https://remote.example/notes/reply-1"),
+        attribution: new URL(remoteActor),
+        content: "A remote reply",
+        to: PUBLIC_COLLECTION,
+        replyTarget: new URL("https://bbs.example.test/objects/post-1"),
+      }),
+    });
+
+    await processInboundCreate(inboxContext(database), create);
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(3);
+    expect(
+      statements.some(
+        (statement) =>
+          statement.sql.includes("INSERT INTO posts") &&
+          statement.sql.includes("'remote'"),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes(
+          "UPDATE threads SET post_count = post_count + 1",
+        ),
+      ),
+    ).toBe(true);
+  });
 });
 
 function inboxDatabase(
@@ -449,6 +488,7 @@ function inboxContext(database: D1Database) {
 function remoteNoteDatabase(
   statements: Array<{ sql: string; params: unknown[] }>,
   batches: unknown[][],
+  options: { replyTarget?: boolean } = {},
 ) {
   return {
     prepare(sql: string) {
@@ -467,6 +507,14 @@ function remoteNoteDatabase(
                 return null;
               }
               if (sql.includes("SELECT blocked_at")) return null;
+              if (sql.includes("FROM federation_actors WHERE uri")) {
+                return { id: "https://remote.example/users/bob" };
+              }
+              if (sql.includes("SELECT posts.id AS postId")) {
+                return options.replyTarget
+                  ? { postId: "post-1", threadId: "thread-1", isLocked: 0 }
+                  : null;
+              }
               if (sql.includes("FROM federation_follows")) {
                 return { id: "https://remote.example/users/bob" };
               }
