@@ -14,6 +14,7 @@ export default [
   route("threads/:threadId", "routes/threads.$threadId.tsx"),
   route("posts/:postId/like", "routes/posts.$postId.like.ts"),
   route("settings/profile", "routes/settings.profile.tsx"),
+  route("notifications", "routes/notifications.tsx"),
   route(".well-known/webfinger", "routes/webfinger.ts"),
   route(".well-known/nodeinfo", "routes/nodeinfo.well-known.ts"),
   route("nodeinfo/2.1", "routes/nodeinfo.ts"),
