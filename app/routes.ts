@@ -5,6 +5,8 @@ export default [
   route("auth/register", "routes/auth.register.tsx"),
   route("auth/login", "routes/auth.login.tsx"),
   route("auth/logout", "routes/auth.logout.ts"),
+  route("users/:handle", "routes/users.$handle.tsx"),
+  route("settings/profile", "routes/settings.profile.tsx"),
   route("api/auth/*", "routes/api.auth.ts"),
   route("health", "routes/health.ts"),
 ] satisfies RouteConfig;
