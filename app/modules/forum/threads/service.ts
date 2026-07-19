@@ -3,6 +3,7 @@ import {
   publicPostOutboxStatement,
   type FederationPostPublication,
 } from "@/modules/federation/outbox";
+import { noteId } from "@/modules/federation/identifiers";
 
 export type NewThread = {
   threadId: string;
@@ -19,6 +20,9 @@ export type NewThread = {
 export async function createThread(database: D1Database, input: NewThread) {
   const now = new Date().toISOString();
   const html = renderMarkdown(input.markdown);
+  const federationObjectId = input.federation
+    ? noteId(input.federation.origin, input.postId)
+    : null;
   const outbox = await publicPostOutboxStatement(database, {
     postId: input.postId,
     authorUserId: input.authorUserId,
@@ -39,7 +43,7 @@ export async function createThread(database: D1Database, input: NewThread) {
       .bind(input.threadId, input.boardId, input.title, now, now, now),
     database
       .prepare(
-        "INSERT INTO posts (id, thread_id, parent_post_id, author_user_id, author_actor_id, origin, state, visibility, markdown, rendered_html, federation_object_id, published_at, updated_at, deleted_at) VALUES (?, ?, NULL, ?, NULL, 'local', 'published', ?, ?, ?, NULL, ?, ?, NULL)",
+        "INSERT INTO posts (id, thread_id, parent_post_id, author_user_id, author_actor_id, origin, state, visibility, markdown, rendered_html, federation_object_id, published_at, updated_at, deleted_at) VALUES (?, ?, NULL, ?, NULL, 'local', 'published', ?, ?, ?, ?, ?, ?, NULL)",
       )
       .bind(
         input.postId,
@@ -48,6 +52,7 @@ export async function createThread(database: D1Database, input: NewThread) {
         input.visibility,
         input.markdown,
         html,
+        federationObjectId,
         now,
         now,
       ),

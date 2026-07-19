@@ -3,6 +3,7 @@ import {
   publicPostOutboxStatement,
   type FederationPostPublication,
 } from "@/modules/federation/outbox";
+import { noteId } from "@/modules/federation/identifiers";
 
 export type NewReply = {
   postId: string;
@@ -26,6 +27,9 @@ export async function createReply(database: D1Database, input: NewReply) {
   if (thread.is_locked) throw new Error("Thread is locked.");
   const now = new Date().toISOString();
   const html = renderMarkdown(input.markdown);
+  const federationObjectId = input.federation
+    ? noteId(input.federation.origin, input.postId)
+    : null;
   const outbox = await publicPostOutboxStatement(database, {
     postId: input.postId,
     authorUserId: input.authorUserId,
@@ -41,7 +45,7 @@ export async function createReply(database: D1Database, input: NewReply) {
   await database.batch([
     database
       .prepare(
-        "INSERT INTO posts (id, thread_id, parent_post_id, author_user_id, author_actor_id, origin, state, visibility, markdown, rendered_html, federation_object_id, published_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, NULL, 'local', 'published', ?, ?, ?, NULL, ?, ?, NULL)",
+        "INSERT INTO posts (id, thread_id, parent_post_id, author_user_id, author_actor_id, origin, state, visibility, markdown, rendered_html, federation_object_id, published_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, NULL, 'local', 'published', ?, ?, ?, ?, ?, ?, NULL)",
       )
       .bind(
         input.postId,
@@ -51,6 +55,7 @@ export async function createReply(database: D1Database, input: NewReply) {
         input.visibility,
         input.markdown,
         html,
+        federationObjectId,
         now,
         now,
       ),

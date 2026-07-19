@@ -90,6 +90,10 @@ describe("public post federation publication", () => {
       object: { type: "Note" },
     });
     expect(activity.object.content).toContain("<p>Hello</p>");
+    const post = batches[0].find((statement) =>
+      statement.sql.includes("INSERT INTO posts"),
+    );
+    expect(post?.params).toContain("https://bbs.example.test/objects/post-1");
   });
 
   it("rejects a public thread before any write when its federation event is absent", async () => {
@@ -129,6 +133,10 @@ describe("public post federation publication", () => {
         statement.sql.includes("federation_outbox_events"),
       ),
     ).toBe(false);
+    const post = batches[0].find((statement) =>
+      statement.sql.includes("INSERT INTO posts"),
+    );
+    expect(post?.params).toContain(null);
   });
 
   it("creates a reply notification in the same batch for the thread author", async () => {
