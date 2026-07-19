@@ -6,6 +6,7 @@ export default [
   route("auth/login", "routes/auth.login.tsx"),
   route("auth/logout", "routes/auth.logout.ts"),
   route("users/:handle", "routes/users.$handle.tsx"),
+  route("objects/:postId", "routes/objects.$postId.tsx"),
   route("settings/profile", "routes/settings.profile.tsx"),
   route(".well-known/webfinger", "routes/webfinger.ts"),
   route(".well-known/nodeinfo", "routes/nodeinfo.well-known.ts"),
