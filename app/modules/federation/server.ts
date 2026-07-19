@@ -8,12 +8,14 @@ import {
   Accept,
   Create,
   CryptographicKey,
+  Delete,
   Follow,
   Note,
   Person,
   PUBLIC_COLLECTION,
   Reject,
   Undo,
+  Update,
 } from "@fedify/vocab";
 
 import {
@@ -35,7 +37,11 @@ import {
   importFederationPublicKey,
 } from "./keys";
 import { isSafeRemoteUrl } from "./remote-url";
-import { storeRemoteNote, storeRemoteThreadReply } from "./remote-note";
+import {
+  deleteRemoteNote,
+  storeRemoteNote,
+  storeRemoteThreadReply,
+} from "./remote-note";
 
 export type FederationEnvironment = Pick<
   Env,
@@ -58,6 +64,11 @@ type LocalReplyTarget = {
   postId: string;
   threadId: string;
   isLocked: number;
+};
+type ExistingRemoteNote = {
+  postId: string | null;
+  threadId: string | null;
+  parentPostId: string | null;
 };
 
 class RejectedInboundActivity extends Error {}
@@ -185,6 +196,19 @@ async function loadLocalReplyTarget(
     )
     .bind(federationObjectId)
     .first<LocalReplyTarget>();
+}
+
+async function loadExistingRemoteNote(
+  database: D1Database,
+  uri: string,
+  actorUri: string,
+) {
+  return database
+    .prepare(
+      "SELECT posts.id AS postId, posts.thread_id AS threadId, posts.parent_post_id AS parentPostId FROM federation_objects LEFT JOIN posts ON posts.federation_object_id = federation_objects.uri WHERE federation_objects.uri = ? AND federation_objects.actor_id = ? AND federation_objects.type = 'Note' AND federation_objects.deleted_at IS NULL LIMIT 1",
+    )
+    .bind(uri, actorUri)
+    .first<ExistingRemoteNote>();
 }
 
 async function resolveRemoteFollower(
@@ -375,12 +399,13 @@ export function processInboundFollowReject(
   return processInboundFollowOutcome(context, reject, "rejected");
 }
 
-export async function processInboundCreate(
+async function processInboundRemoteNoteActivity(
   context: InboxContext<FederationEnvironment>,
-  create: Create,
+  activity: Create | Update,
+  mode: "create" | "update",
 ) {
-  const activityId = create.id?.href;
-  const actorUri = create.actorId?.href;
+  const activityId = activity.id?.href;
+  const actorUri = activity.actorId?.href;
   const recipient = context.recipient;
   if (!activityId || !actorUri || !recipient) return;
   if (!validateInboxActivity({ activityId, actorUri }).ok) return;
@@ -400,7 +425,7 @@ export async function processInboundCreate(
     if (!(await loadKnownRemoteActor(context.data.DB, actorUri))) {
       throw new RejectedInboundActivity("Remote actor is unknown.");
     }
-    const note = await create.getObject(context);
+    const note = await activity.getObject(context);
     const noteUri = note?.id?.href;
     if (
       !(note instanceof Note) ||
@@ -409,7 +434,7 @@ export async function processInboundCreate(
       note.attributionId?.href !== actorUri
     ) {
       throw new RejectedInboundActivity(
-        "Create must contain a Note attributed to its actor.",
+        "Activity must contain a Note attributed to its actor.",
       );
     }
     if (new URL(noteUri).origin !== new URL(actorUri).origin) {
@@ -430,30 +455,121 @@ export async function processInboundCreate(
       publishedAt: instantValue(note.published) ?? new Date().toISOString(),
       updatedAt: instantValue(note.updated),
     };
-    const replyTarget = remoteNote.inReplyToUri
-      ? await loadLocalReplyTarget(context.data.DB, remoteNote.inReplyToUri)
-      : null;
-    if (replyTarget) {
-      if (replyTarget.isLocked) {
-        throw new RejectedInboundActivity("Thread is locked.");
+    const existing = await loadExistingRemoteNote(
+      context.data.DB,
+      noteUri,
+      actorUri,
+    );
+
+    if (mode === "update") {
+      if (!existing) {
+        throw new RejectedInboundActivity("Remote Note does not exist.");
       }
-      await storeRemoteThreadReply(context.data.DB, {
-        ...remoteNote,
-        postId: crypto.randomUUID(),
-        threadId: replyTarget.threadId,
-        parentPostId: replyTarget.postId,
-      });
+      if (existing.postId && existing.threadId && existing.parentPostId) {
+        await storeRemoteThreadReply(context.data.DB, {
+          ...remoteNote,
+          postId: existing.postId,
+          threadId: existing.threadId,
+          parentPostId: existing.parentPostId,
+        });
+      } else {
+        await storeRemoteNote(context.data.DB, remoteNote);
+      }
     } else {
-      if (
-        !(await loadFollowedRemoteActor(
-          context.data.DB,
-          localActor.id,
-          actorUri,
-        ))
-      ) {
-        throw new RejectedInboundActivity("Remote actor is not followed.");
+      const replyTarget = remoteNote.inReplyToUri
+        ? await loadLocalReplyTarget(context.data.DB, remoteNote.inReplyToUri)
+        : null;
+      const isLocalReply =
+        remoteNote.inReplyToUri !== null &&
+        new URL(remoteNote.inReplyToUri).origin ===
+          new URL(context.data.APP_ORIGIN).origin;
+      if (isLocalReply && !replyTarget) {
+        throw new RejectedInboundActivity(
+          "Reply target is not a public local post.",
+        );
       }
-      await storeRemoteNote(context.data.DB, remoteNote);
+      if (replyTarget) {
+        if (replyTarget.isLocked) {
+          throw new RejectedInboundActivity("Thread is locked.");
+        }
+        await storeRemoteThreadReply(context.data.DB, {
+          ...remoteNote,
+          postId: existing?.postId ?? crypto.randomUUID(),
+          threadId: existing?.threadId ?? replyTarget.threadId,
+          parentPostId: existing?.parentPostId ?? replyTarget.postId,
+        });
+      } else {
+        if (
+          !(await loadFollowedRemoteActor(
+            context.data.DB,
+            localActor.id,
+            actorUri,
+          ))
+        ) {
+          throw new RejectedInboundActivity("Remote actor is not followed.");
+        }
+        await storeRemoteNote(context.data.DB, remoteNote);
+      }
+    }
+    await completeInboxActivity(context.data.DB, activityId);
+  } catch (error) {
+    if (error instanceof RejectedInboundActivity) {
+      await rejectInboxActivity(context.data.DB, activityId, error.message);
+      return;
+    }
+    await releaseInboxActivity(context.data.DB, activityId);
+    throw error;
+  }
+}
+
+export function processInboundCreate(
+  context: InboxContext<FederationEnvironment>,
+  create: Create,
+) {
+  return processInboundRemoteNoteActivity(context, create, "create");
+}
+
+export function processInboundUpdate(
+  context: InboxContext<FederationEnvironment>,
+  update: Update,
+) {
+  return processInboundRemoteNoteActivity(context, update, "update");
+}
+
+export async function processInboundDelete(
+  context: InboxContext<FederationEnvironment>,
+  activity: Delete,
+) {
+  const activityId = activity.id?.href;
+  const actorUri = activity.actorId?.href;
+  const objectUri = activity.objectId?.href;
+  const recipient = context.recipient;
+  if (!activityId || !actorUri || !objectUri || !recipient) return;
+  if (!validateInboxActivity({ activityId, actorUri }).ok) return;
+  if (!isSafeRemoteUrl(objectUri)) return;
+
+  const localActor = await loadLocalActor(context.data.DB, recipient);
+  if (!localActor) return;
+  const claimed = await claimInboxActivity(context.data.DB, {
+    activityId,
+    actorUri,
+  });
+  if (!claimed) return;
+
+  try {
+    if (await isBlockedRemoteActor(context.data.DB, actorUri)) {
+      throw new RejectedInboundActivity("Remote actor or instance is blocked.");
+    }
+    if (new URL(objectUri).origin !== new URL(actorUri).origin) {
+      throw new RejectedInboundActivity("Note must be hosted by its actor.");
+    }
+    if (
+      !(await deleteRemoteNote(context.data.DB, {
+        uri: objectUri,
+        actorUri,
+      }))
+    ) {
+      throw new RejectedInboundActivity("Remote Note does not exist.");
     }
     await completeInboxActivity(context.data.DB, activityId);
   } catch (error) {
@@ -514,7 +630,9 @@ builder
   .on(Undo, processInboundUndo)
   .on(Accept, processInboundFollowAccept)
   .on(Reject, processInboundFollowReject)
-  .on(Create, processInboundCreate);
+  .on(Create, processInboundCreate)
+  .on(Update, processInboundUpdate)
+  .on(Delete, processInboundDelete);
 
 export async function createWorkerFederation(
   environment: FederationEnvironment,

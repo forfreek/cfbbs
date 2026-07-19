@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   Accept,
   Create,
+  Delete,
   Follow,
   Note,
   PUBLIC_COLLECTION,
   Reject,
   Undo,
+  Update,
 } from "@fedify/vocab";
 
 import {
@@ -17,9 +19,11 @@ import {
   createWorkerFederation,
   processInboundFollowAccept,
   processInboundCreate,
+  processInboundDelete,
   processInboundFollow,
   processInboundFollowReject,
   processInboundUndo,
+  processInboundUpdate,
 } from "@/modules/federation/server";
 
 function federationEnvironment() {
@@ -436,6 +440,66 @@ describe("Fedify inbox gateway", () => {
       ),
     ).toBe(true);
   });
+
+  it("updates only an existing remote Note owned by the activity actor", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const batches: unknown[][] = [];
+    const database = remoteNoteDatabase(statements, batches, {
+      existing: "reply",
+    });
+    const remoteActor = "https://remote.example/users/bob";
+    const update = new Update({
+      id: new URL("https://remote.example/activities/update-note-1"),
+      actor: new URL(remoteActor),
+      object: new Note({
+        id: new URL("https://remote.example/notes/reply-1"),
+        attribution: new URL(remoteActor),
+        content: "An edited remote reply",
+        to: PUBLIC_COLLECTION,
+      }),
+    });
+
+    await processInboundUpdate(inboxContext(database), update);
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(3);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("ON CONFLICT(federation_object_id) DO UPDATE"),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((statement) =>
+        statement.params.includes("An edited remote reply"),
+      ),
+    ).toBe(true);
+  });
+
+  it("soft deletes the matching remote Note and completes its receipt", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const batches: unknown[][] = [];
+    const database = remoteNoteDatabase(statements, batches);
+    const activity = new Delete({
+      id: new URL("https://remote.example/activities/delete-note-1"),
+      actor: new URL("https://remote.example/users/bob"),
+      object: new URL("https://remote.example/notes/reply-1"),
+    });
+
+    await processInboundDelete(inboxContext(database), activity);
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(3);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("UPDATE federation_objects SET deleted_at"),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("state = 'processed'"),
+      ),
+    ).toBe(true);
+  });
 });
 
 function inboxDatabase(
@@ -488,7 +552,7 @@ function inboxContext(database: D1Database) {
 function remoteNoteDatabase(
   statements: Array<{ sql: string; params: unknown[] }>,
   batches: unknown[][],
-  options: { replyTarget?: boolean } = {},
+  options: { existing?: "reply" | "standalone"; replyTarget?: boolean } = {},
 ) {
   return {
     prepare(sql: string) {
@@ -510,6 +574,16 @@ function remoteNoteDatabase(
               if (sql.includes("FROM federation_actors WHERE uri")) {
                 return { id: "https://remote.example/users/bob" };
               }
+              if (sql.includes("FROM federation_objects LEFT JOIN posts")) {
+                if (options.existing === "reply") {
+                  return {
+                    postId: "remote-post-1",
+                    threadId: "thread-1",
+                    parentPostId: "post-1",
+                  };
+                }
+                return options.existing === "standalone" ? {} : null;
+              }
               if (sql.includes("SELECT posts.id AS postId")) {
                 return options.replyTarget
                   ? { postId: "post-1", threadId: "thread-1", isLocked: 0 }
@@ -527,7 +601,11 @@ function remoteNoteDatabase(
     },
     async batch(batch: unknown[]) {
       batches.push(batch);
-      return [];
+      return [
+        { meta: { changes: 1 } },
+        { meta: { changes: 1 } },
+        { meta: { changes: 1 } },
+      ];
     },
   } as unknown as D1Database;
 }

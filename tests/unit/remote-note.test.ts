@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  remoteNoteDeleteStatements,
   remoteNoteQueries,
   remoteNoteStatements,
   remoteThreadReplyStatements,
@@ -73,6 +74,24 @@ describe("remote Note persistence", () => {
     );
     expect(statements[2]?.params).toEqual(
       expect.arrayContaining([note.actorUri, note.uri, "post-1"]),
+    );
+  });
+
+  it("deletes only the matching remote Note and its mapped reply", () => {
+    const statements = remoteNoteDeleteStatements(
+      { uri: note.uri, actorUri: note.actorUri },
+      "2026-07-19T00:00:00.000Z",
+    );
+    expect(statements).toHaveLength(3);
+    expect(statements[0]?.sql).toContain("post_count - 1");
+    expect(statements[1]?.sql).toContain("state = 'deleted'");
+    expect(statements[2]?.sql).toContain("deleted_at IS NULL");
+    expect(statements[2]?.params).toEqual(
+      expect.arrayContaining([
+        note.uri,
+        note.actorUri,
+        "2026-10-17T00:00:00.000Z",
+      ]),
     );
   });
 });

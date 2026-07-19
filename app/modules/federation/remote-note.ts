@@ -28,6 +28,11 @@ export type RemoteThreadReply = RemoteNote & {
   parentPostId: string;
 };
 
+export type RemoteNoteDeletion = {
+  uri: string;
+  actorUri: string;
+};
+
 const allowedTags = [
   "p",
   "br",
@@ -174,6 +179,45 @@ export async function storeRemoteThreadReply(
       database.prepare(statement.sql).bind(...statement.params),
     ),
   );
+}
+
+export function remoteNoteDeleteStatements(
+  input: RemoteNoteDeletion,
+  now: string,
+): Statement[] {
+  if (!isSafeRemoteUrl(input.uri) || !isSafeRemoteUrl(input.actorUri)) {
+    throw new Error("Remote Note deletion requires public HTTPS identifiers.");
+  }
+  const retentionExpiresAt = new Date(
+    new Date(now).getTime() + 90 * 24 * 60 * 60 * 1_000,
+  ).toISOString();
+  return [
+    {
+      sql: "UPDATE threads SET post_count = CASE WHEN post_count > 0 THEN post_count - 1 ELSE 0 END, updated_at = ? WHERE id IN (SELECT posts.thread_id FROM posts INNER JOIN federation_objects ON federation_objects.uri = posts.federation_object_id WHERE posts.federation_object_id = ? AND posts.author_actor_id = ? AND posts.origin = 'remote' AND posts.state = 'published' AND federation_objects.actor_id = ? AND federation_objects.deleted_at IS NULL)",
+      params: [now, input.uri, input.actorUri, input.actorUri],
+    },
+    {
+      sql: "UPDATE posts SET state = 'deleted', deleted_at = ?, updated_at = ? WHERE federation_object_id = ? AND author_actor_id = ? AND origin = 'remote' AND state = 'published' AND EXISTS (SELECT 1 FROM federation_objects WHERE federation_objects.uri = posts.federation_object_id AND federation_objects.actor_id = ? AND federation_objects.deleted_at IS NULL)",
+      params: [now, now, input.uri, input.actorUri, input.actorUri],
+    },
+    {
+      sql: "UPDATE federation_objects SET deleted_at = ?, retention_expires_at = ? WHERE uri = ? AND actor_id = ? AND type = 'Note' AND deleted_at IS NULL",
+      params: [now, retentionExpiresAt, input.uri, input.actorUri],
+    },
+  ];
+}
+
+export async function deleteRemoteNote(
+  database: D1Database,
+  input: RemoteNoteDeletion,
+) {
+  const now = new Date().toISOString();
+  const results = await database.batch(
+    remoteNoteDeleteStatements(input, now).map((statement) =>
+      database.prepare(statement.sql).bind(...statement.params),
+    ),
+  );
+  return results.at(-1)?.meta.changes === 1;
 }
 
 const followedRemoteNotesQuery = `
