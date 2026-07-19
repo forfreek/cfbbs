@@ -171,7 +171,7 @@ Invariants:
 - [x] Use secure, HttpOnly, SameSite=Lax cookies; production/test cookies are Secure and scoped to the canonical host.
 - [x] Implement register, login, logout, session loading, local profile editing, and public profile rendering.
 - [x] Keep display name, biography, and avatar URL mutable without changing Actor identity.
-- [ ] Test duplicate/case-folded usernames, reserved names, invalid sessions, logout, and handle immutability.
+- [x] Test duplicate/case-folded usernames, reserved names, invalid sessions, logout, and handle immutability.
 - [ ] Commit with `feat: add local identity and profiles`.
 
 ### Task 6: Implement hierarchical boards and RBAC

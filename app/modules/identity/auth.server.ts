@@ -1,5 +1,6 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { username } from "better-auth/plugins";
 
 import { createDatabase } from "@/db/client.server";
@@ -72,6 +73,22 @@ export function createAuth(environment: AuthEnvironment) {
         validationOrder: { username: "post-normalization" },
       }),
     ],
+    hooks: {
+      before: createAuthMiddleware(async (context) => {
+        const body = context.body;
+        if (
+          context.path === "/update-user" &&
+          body &&
+          typeof body === "object" &&
+          ("username" in body || "displayUsername" in body)
+        ) {
+          throw APIError.from("BAD_REQUEST", {
+            code: "HANDLE_IMMUTABLE",
+            message: "Federation handles are immutable.",
+          });
+        }
+      }),
+    },
     databaseHooks: {
       user: {
         create: {
