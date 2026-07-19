@@ -5,6 +5,7 @@ import {
   canCreateForumThread,
   canViewForumBoard,
   canViewPrivateForumContent,
+  isForumBoardWithinPrivateTree,
 } from "@/modules/forum/access.server";
 import { validateThreadInput } from "@/modules/forum/input";
 import {
@@ -23,14 +24,15 @@ async function boardPageData(request: Request, env: Env, boardId: string) {
   if (!(await canViewForumBoard(env.DB, board, userId))) {
     throw new Response("Not found", { status: 404 });
   }
-  const [canViewPrivate, canCreate] = await Promise.all([
+  const [canViewPrivate, canCreate, boardIsPrivate] = await Promise.all([
     canViewPrivateForumContent(env.DB, board, userId),
     canCreateForumThread(env.DB, board, userId),
+    isForumBoardWithinPrivateTree(env.DB, board.id),
   ]);
   const threads = await listForumBoardThreads(
     env.DB,
     board.id,
-    board.visibility === "private" || canViewPrivate,
+    boardIsPrivate || canViewPrivate,
   );
   return { board, session, canCreate, threads: threads.results };
 }
@@ -64,6 +66,10 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   ) {
     throw new Response("Forbidden", { status: 403 });
   }
+  const boardIsPrivate = await isForumBoardWithinPrivateTree(
+    context.cloudflare.env.DB,
+    board.id,
+  );
 
   const form = await request.formData();
   const input = validateThreadInput({
@@ -81,8 +87,8 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     authorUserId: session.user.id,
     title: input.value.title,
     markdown: input.value.markdown,
-    visibility: board.visibility,
-    ...(board.visibility === "public"
+    visibility: boardIsPrivate ? "private" : "public",
+    ...(!boardIsPrivate
       ? {
           federation: {
             eventId: crypto.randomUUID(),

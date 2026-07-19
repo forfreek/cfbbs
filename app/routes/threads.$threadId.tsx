@@ -5,6 +5,7 @@ import {
   canReplyInForumBoard,
   canViewForumBoard,
   canViewPrivateForumContent,
+  isForumBoardWithinPrivateTree,
 } from "@/modules/forum/access.server";
 import { validateReplyInput } from "@/modules/forum/input";
 import {
@@ -23,11 +24,13 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
 
   const session = await getSession(request, env);
   const userId = session?.user.id ?? null;
-  const [canViewBoard, canViewPrivate, canReply] = await Promise.all([
-    canViewForumBoard(env.DB, board, userId),
-    canViewPrivateForumContent(env.DB, board, userId),
-    canReplyInForumBoard(env.DB, board, userId),
-  ]);
+  const [canViewBoard, canViewPrivate, canReply, boardIsPrivate] =
+    await Promise.all([
+      canViewForumBoard(env.DB, board, userId),
+      canViewPrivateForumContent(env.DB, board, userId),
+      canReplyInForumBoard(env.DB, board, userId),
+      isForumBoardWithinPrivateTree(env.DB, board.id),
+    ]);
   if (
     !canViewBoard ||
     (thread.firstPostVisibility === "private" && !canViewPrivate)
@@ -37,7 +40,7 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
   const posts = await listForumThreadPosts(
     env.DB,
     thread.id,
-    board.visibility === "private" || canViewPrivate,
+    boardIsPrivate || canViewPrivate,
     userId,
   );
   return { board, thread, posts: posts.results, session, canReply };
@@ -58,15 +61,18 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   if (!thread) throw new Response("Not found", { status: 404 });
   const board = await loadForumBoard(context.cloudflare.env.DB, thread.boardId);
   if (!board) throw new Response("Not found", { status: 404 });
-  const [canView, canViewPrivate, canReply] = await Promise.all([
-    canViewForumBoard(context.cloudflare.env.DB, board, session.user.id),
-    canViewPrivateForumContent(
-      context.cloudflare.env.DB,
-      board,
-      session.user.id,
-    ),
-    canReplyInForumBoard(context.cloudflare.env.DB, board, session.user.id),
-  ]);
+  const [canView, canViewPrivate, canReply, boardIsPrivate] = await Promise.all(
+    [
+      canViewForumBoard(context.cloudflare.env.DB, board, session.user.id),
+      canViewPrivateForumContent(
+        context.cloudflare.env.DB,
+        board,
+        session.user.id,
+      ),
+      canReplyInForumBoard(context.cloudflare.env.DB, board, session.user.id),
+      isForumBoardWithinPrivateTree(context.cloudflare.env.DB, board.id),
+    ],
+  );
   if (
     !canView ||
     (thread.firstPostVisibility === "private" && !canViewPrivate)
@@ -84,7 +90,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   if (!input.ok) return data({ error: input.message }, { status: 400 });
 
   const visibility =
-    board.visibility === "private" || thread.firstPostVisibility === "private"
+    boardIsPrivate || thread.firstPostVisibility === "private"
       ? "private"
       : "public";
   await createReply(context.cloudflare.env.DB, {

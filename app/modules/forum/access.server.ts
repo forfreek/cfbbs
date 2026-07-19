@@ -1,12 +1,25 @@
 import type { ForumBoard } from "./read.server";
 import { authorizeDatabase } from "@/modules/permissions/authorization.server";
 
+export async function isForumBoardWithinPrivateTree(
+  database: D1Database,
+  boardId: string,
+) {
+  const privateAncestor = await database
+    .prepare(
+      "SELECT 1 AS privateAncestor FROM board_closure AS path INNER JOIN boards AS ancestor ON ancestor.id = path.ancestor_id WHERE path.descendant_id = ? AND ancestor.visibility = 'private' LIMIT 1",
+    )
+    .bind(boardId)
+    .first<{ privateAncestor: number }>();
+  return privateAncestor !== null;
+}
+
 export async function canViewForumBoard(
   database: D1Database,
   board: ForumBoard,
   userId: string | null,
 ) {
-  if (board.visibility === "public") return true;
+  if (!(await isForumBoardWithinPrivateTree(database, board.id))) return true;
   return canViewPrivateForumContent(database, board, userId);
 }
 

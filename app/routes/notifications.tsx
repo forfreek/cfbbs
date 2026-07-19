@@ -1,7 +1,10 @@
 import { Form, Link, redirect } from "react-router";
 
 import type { Route } from "./+types/notifications";
-import { canViewPrivateForumContent } from "@/modules/forum/access.server";
+import {
+  canViewPrivateForumContent,
+  isForumBoardWithinPrivateTree,
+} from "@/modules/forum/access.server";
 import { loadForumBoard } from "@/modules/forum/read.server";
 import {
   listNotifications,
@@ -23,14 +26,17 @@ async function authorizeNotification(
   userId: string,
   cache: Map<string, Promise<boolean>>,
 ) {
-  const requiresPrivateAccess =
+  const explicitlyPrivate =
     notification.boardVisibility === "private" ||
     notification.postVisibility === "private";
-  if (!requiresPrivateAccess) return true;
-  if (!notification.boardId) return false;
+  if (!notification.boardId) return !explicitlyPrivate;
   const cached = cache.get(notification.boardId);
   if (cached) return cached;
   const authorization = (async () => {
+    const requiresPrivateAccess =
+      explicitlyPrivate ||
+      (await isForumBoardWithinPrivateTree(database, notification.boardId!));
+    if (!requiresPrivateAccess) return true;
     const board = await loadForumBoard(database, notification.boardId!);
     return board ? canViewPrivateForumContent(database, board, userId) : false;
   })();
