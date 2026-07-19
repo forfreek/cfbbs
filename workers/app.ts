@@ -3,6 +3,7 @@ import { createRequestHandler } from "react-router";
 import { createWorkerFederation } from "@/modules/federation/server";
 import { processFederationQueue } from "@/modules/jobs/federation-queue";
 import { enqueuePendingOutboxEvents } from "@/modules/jobs/federation-outbox";
+import { purgeExpiredRemoteObjects } from "@/modules/jobs/remote-retention";
 
 declare module "react-router" {
   export interface AppLoadContext {
@@ -37,6 +38,11 @@ export default {
     await processFederationQueue(batch, env);
   },
   scheduled(_controller, env, ctx) {
-    ctx.waitUntil(enqueuePendingOutboxEvents(env.DB, env.FEDERATION_QUEUE));
+    ctx.waitUntil(
+      Promise.all([
+        enqueuePendingOutboxEvents(env.DB, env.FEDERATION_QUEUE),
+        purgeExpiredRemoteObjects(env.DB),
+      ]),
+    );
   },
 } satisfies ExportedHandler<Env>;
