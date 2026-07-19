@@ -116,6 +116,19 @@ export function acceptedRemoteFollowStatements(
       ],
     },
     {
+      sql: "INSERT INTO notifications (id, recipient_user_id, actor_id, type, thread_id, post_id, read_at, created_at) SELECT ?, ?, ?, 'follow', NULL, NULL, NULL, ? WHERE ? != ? AND NOT EXISTS (SELECT 1 FROM notifications WHERE recipient_user_id = ? AND actor_id = ? AND type = 'follow')",
+      params: [
+        crypto.randomUUID(),
+        input.localActorId,
+        input.follower.uri,
+        now,
+        input.localActorId,
+        input.follower.uri,
+        input.localActorId,
+        input.follower.uri,
+      ],
+    },
+    {
       sql: "INSERT OR IGNORE INTO federation_outbox_events (id, actor_id, aggregate_type, aggregate_id, activity_type, activity_json, delivery_scope, state, queued_at, created_at, updated_at) VALUES (?, ?, 'follow', ?, 'Accept', ?, 'direct', 'pending', NULL, ?, ?)",
       params: [
         input.eventId,

@@ -58,18 +58,22 @@ describe("accepted remote follows", () => {
     });
   });
 
-  it("atomically records the follower and queues one direct delivery", () => {
+  it("atomically records the follower, creates one notification, and queues one direct delivery", () => {
     const statements = acceptedRemoteFollowStatements(
       input,
       "2026-07-19T00:00:00.000Z",
     );
 
-    expect(statements).toHaveLength(4);
+    expect(statements).toHaveLength(5);
     expect(statements[0]?.sql).toContain("ON CONFLICT(uri)");
     expect(statements[1]?.sql).toContain("state = 'accepted'");
-    expect(statements[2]?.sql).toContain("'Accept'");
-    expect(statements[2]?.sql).toContain("'direct'");
-    expect(statements[3]?.params).toContain(
+    expect(statements[2]?.sql).toContain("'follow'");
+    expect(statements[2]?.sql).toContain(
+      "NOT EXISTS (SELECT 1 FROM notifications",
+    );
+    expect(statements[3]?.sql).toContain("'Accept'");
+    expect(statements[3]?.sql).toContain("'direct'");
+    expect(statements[4]?.params).toContain(
       "https://remote.example/inbox/shared",
     );
   });
@@ -104,7 +108,7 @@ describe("accepted remote follows", () => {
 
     await acceptRemoteFollow(database, input);
     expect(batches).toHaveLength(1);
-    expect(batches[0]).toHaveLength(4);
+    expect(batches[0]).toHaveLength(5);
   });
 
   it("only marks the exact accepted relationship as undone", async () => {

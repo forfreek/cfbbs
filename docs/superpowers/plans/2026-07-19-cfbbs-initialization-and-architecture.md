@@ -166,11 +166,11 @@ Invariants:
 
 **Files:** `app/modules/identity/*`, `app/routes/auth.*`, `app/routes/users.*`, `tests/integration/identity/*`
 
-- [ ] Configure Better Auth with the Drizzle/D1 adapter and username plugin.
-- [ ] Enforce immutable normalized handles matching `^[a-z0-9_]{3,32}$`, reserved-name checks, and a minimum 12-character password.
-- [ ] Use secure, HttpOnly, SameSite=Lax cookies; production/test cookies are Secure and scoped to the canonical host.
-- [ ] Implement register, login, logout, session loading, local profile editing, and public profile rendering.
-- [ ] Keep display name, biography, and avatar URL mutable without changing Actor identity.
+- [x] Configure Better Auth with the Drizzle/D1 adapter and username plugin.
+- [x] Enforce immutable normalized handles matching `^[a-z0-9_]{3,32}$`, reserved-name checks, and a minimum 12-character password.
+- [x] Use secure, HttpOnly, SameSite=Lax cookies; production/test cookies are Secure and scoped to the canonical host.
+- [x] Implement register, login, logout, session loading, local profile editing, and public profile rendering.
+- [x] Keep display name, biography, and avatar URL mutable without changing Actor identity.
 - [ ] Test duplicate/case-folded usernames, reserved names, invalid sessions, logout, and handle immutability.
 - [ ] Commit with `feat: add local identity and profiles`.
 
@@ -192,11 +192,11 @@ Invariants:
 
 - [x] Implement public/private board listings and cursor-based topic navigation.
 - [x] Implement topic creation, chronological replies, `inReplyTo`, editing, soft deletion, locking, pinning, and revision history.
-- [ ] Parse Markdown server-side and sanitize links and HTML against script execution, unsafe protocols, and event-handler attributes.
-- [ ] Implement idempotent likes and unread notifications for replies, follows, and likes.
-- [ ] Ensure notification payloads never expose a private board title, author, or excerpt to an unauthorized viewer.
-- [ ] Write public-post changes and federation outbox events atomically; do not create federation events for private boards.
-- [ ] Test locked threads, post ownership, moderator overrides, duplicate likes, XSS payloads, private-board leakage, and D1 outbox recovery.
+- [x] Parse Markdown server-side and sanitize links and HTML against script execution, unsafe protocols, and event-handler attributes.
+- [x] Implement idempotent likes and unread notifications for replies, follows, and likes.
+- [x] Ensure notification payloads never expose a private board title, author, or excerpt to an unauthorized viewer.
+- [x] Write public-post changes and federation outbox events atomically; do not create federation events for private boards.
+- [x] Test locked threads, post ownership, moderator overrides, duplicate likes, XSS payloads, private-board leakage, and D1 outbox recovery.
 - [ ] Commit with `feat: add local forum participation`.
 
 ### Task 8: Implement search, feeds, administration, and responsive UI
