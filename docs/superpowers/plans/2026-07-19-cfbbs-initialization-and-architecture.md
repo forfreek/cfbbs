@@ -244,10 +244,10 @@ Invariants:
 
 **Files:** `app/modules/moderation/federation/*`, `app/modules/jobs/remote-retention.server.ts`, `app/routes/admin.federation.*`, `tests/integration/moderation/*`
 
-- [ ] Implement instance blocks, remote Actor blocks, user mute/block, reports, delivery diagnostics, and audit trails.
-- [ ] Allow valid remote replies to display immediately while quarantining abnormal rates or repeated failures.
-- [ ] Prevent blocked instances and Actors from producing visible replies, notifications, or new delivery attempts.
-- [ ] Purge remote objects older than 90 days unless referenced locally, active, or retained for moderation evidence.
+- [x] Implement instance blocks, remote Actor blocks, user mute/block, reports, delivery diagnostics, and audit trails.
+- [x] Allow valid remote replies to display immediately while quarantining abnormal rates or repeated failures.
+- [x] Prevent blocked instances and Actors from producing visible replies, notifications, or new delivery attempts.
+- [x] Purge remote objects older than 90 days unless referenced locally, active, or retained for moderation evidence.
 - [ ] Test block precedence, user-specific mute behavior, report access, audit immutability, retention exceptions, and cleanup idempotency.
 - [ ] Commit with `feat: add federation safety controls`.
 
