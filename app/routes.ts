@@ -7,6 +7,7 @@ export default [
   route("auth/logout", "routes/auth.logout.ts"),
   route("users/:handle", "routes/users.$handle.tsx"),
   route("settings/profile", "routes/settings.profile.tsx"),
+  route(".well-known/webfinger", "routes/webfinger.ts"),
   route("api/auth/*", "routes/api.auth.ts"),
   route("health", "routes/health.ts"),
 ] satisfies RouteConfig;
