@@ -29,6 +29,10 @@ export type OutboundFollow = {
   following: RemoteActor;
 };
 
+export type OutboundFollowUndo = OutboundFollow & {
+  followActivityId: string;
+};
+
 function validateRemoteFollower(follower: RemoteFollower) {
   if (!isSafeRemoteUrl(follower.uri)) {
     throw new Error("Remote follower URI must be a public HTTPS URL.");
@@ -147,6 +151,18 @@ export function createOutboundFollowActivity(input: OutboundFollow) {
   };
 }
 
+export function createOutboundFollowUndoActivity(input: OutboundFollowUndo) {
+  const actor = new URL(`/users/${input.localHandle}`, input.origin).href;
+  return {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id: new URL(`/activities/undo/${input.eventId}`, input.origin).href,
+    type: "Undo",
+    actor,
+    object: input.followActivityId,
+    to: input.following.uri,
+  };
+}
+
 export function outboundFollowStatements(
   input: OutboundFollow,
   now: string,
@@ -201,6 +217,74 @@ export function outboundFollowStatements(
   ];
 }
 
+export function outboundFollowUndoStatements(
+  input: OutboundFollowUndo,
+  now: string,
+): Statement[] {
+  validateRemoteFollower(input.following);
+  if (
+    !/^[a-zA-Z0-9_-]{1,128}$/.test(input.eventId) ||
+    !input.localActorId ||
+    !input.localHandle
+  ) {
+    throw new Error("Outbound Follow identifiers are required.");
+  }
+  let followActivityOrigin: string;
+  try {
+    followActivityOrigin = new URL(input.followActivityId).origin;
+  } catch {
+    throw new Error("Outbound Follow activity ID must be a URL.");
+  }
+  if (followActivityOrigin !== new URL(input.origin).origin) {
+    throw new Error(
+      "Outbound Follow activity ID must belong to this instance.",
+    );
+  }
+
+  const activity = createOutboundFollowUndoActivity(input);
+  const targetInboxUrl =
+    input.following.sharedInboxUrl ?? input.following.inboxUrl;
+  const activeFollow =
+    "follower_actor_id = ? AND following_actor_id = ? AND follow_activity_id = ? AND state IN ('pending', 'accepted')";
+  return [
+    {
+      sql: `INSERT OR IGNORE INTO federation_outbox_events (id, actor_id, aggregate_type, aggregate_id, activity_type, activity_json, delivery_scope, state, queued_at, created_at, updated_at) SELECT ?, ?, 'follow', ?, 'Undo', ?, 'direct', 'pending', NULL, ?, ? WHERE EXISTS (SELECT 1 FROM federation_follows WHERE ${activeFollow})`,
+      params: [
+        input.eventId,
+        input.localActorId,
+        input.followActivityId,
+        JSON.stringify(activity),
+        now,
+        now,
+        input.localActorId,
+        input.following.uri,
+        input.followActivityId,
+      ],
+    },
+    {
+      sql: "INSERT OR IGNORE INTO federation_deliveries (id, outbox_event_id, target_inbox_url, state, attempts, next_attempt_at, last_error, delivered_at, created_at, updated_at) SELECT ?, ?, ?, 'pending', 0, ?, NULL, NULL, ?, ? WHERE EXISTS (SELECT 1 FROM federation_outbox_events WHERE id = ?)",
+      params: [
+        crypto.randomUUID(),
+        input.eventId,
+        targetInboxUrl,
+        now,
+        now,
+        now,
+        input.eventId,
+      ],
+    },
+    {
+      sql: `UPDATE federation_follows SET state = 'undone', updated_at = ? WHERE ${activeFollow}`,
+      params: [
+        now,
+        input.localActorId,
+        input.following.uri,
+        input.followActivityId,
+      ],
+    },
+  ];
+}
+
 export async function acceptRemoteFollow(
   database: D1Database,
   input: AcceptedRemoteFollow,
@@ -223,6 +307,19 @@ export async function createOutboundFollow(
       database.prepare(statement.sql).bind(...statement.params),
     ),
   );
+}
+
+export async function undoOutboundFollow(
+  database: D1Database,
+  input: OutboundFollowUndo,
+) {
+  const now = new Date().toISOString();
+  const results = await database.batch(
+    outboundFollowUndoStatements(input, now).map((statement) =>
+      database.prepare(statement.sql).bind(...statement.params),
+    ),
+  );
+  return results.at(-1)?.meta.changes === 1;
 }
 
 export async function undoRemoteFollow(

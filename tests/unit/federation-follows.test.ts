@@ -5,12 +5,16 @@ import {
   acceptedRemoteFollowStatements,
   createOutboundFollow,
   createOutboundFollowActivity,
+  createOutboundFollowUndoActivity,
   createFollowAcceptActivity,
   outboundFollowStatements,
+  outboundFollowUndoStatements,
   settleOutboundFollow,
+  undoOutboundFollow,
   undoRemoteFollow,
   type AcceptedRemoteFollow,
   type OutboundFollow,
+  type OutboundFollowUndo,
 } from "@/modules/federation/follows";
 
 const input: AcceptedRemoteFollow = {
@@ -34,6 +38,12 @@ const outboundInput: OutboundFollow = {
   localHandle: "alice",
   origin: "https://bbs.example.test",
   following: input.follower,
+};
+
+const outboundUndoInput: OutboundFollowUndo = {
+  ...outboundInput,
+  eventId: "undo-event-1",
+  followActivityId: "https://bbs.example.test/activities/follow/follow-event-1",
 };
 
 describe("accepted remote follows", () => {
@@ -204,5 +214,77 @@ describe("accepted remote follows", () => {
     await createOutboundFollow(database, outboundInput);
     expect(batches).toHaveLength(1);
     expect(batches[0]).toHaveLength(4);
+  });
+
+  it("creates an Undo activity for the original local Follow", () => {
+    expect(createOutboundFollowUndoActivity(outboundUndoInput)).toEqual({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://bbs.example.test/activities/undo/undo-event-1",
+      type: "Undo",
+      actor: "https://bbs.example.test/users/alice",
+      object: "https://bbs.example.test/activities/follow/follow-event-1",
+      to: "https://remote.example/users/bob",
+    });
+  });
+
+  it("only queues a direct Undo when the exact Follow is still active", () => {
+    const statements = outboundFollowUndoStatements(
+      outboundUndoInput,
+      "2026-07-19T00:00:00.000Z",
+    );
+
+    expect(statements).toHaveLength(3);
+    expect(statements[0]?.sql).toContain("WHERE EXISTS");
+    expect(statements[0]?.sql).toContain("state IN ('pending', 'accepted')");
+    expect(statements[1]?.params).toContain(
+      "https://remote.example/inbox/shared",
+    );
+    expect(statements[2]?.sql).toContain("state = 'undone'");
+    expect(statements[2]?.params).toEqual(
+      expect.arrayContaining([
+        "user-1",
+        "https://remote.example/users/bob",
+        "https://bbs.example.test/activities/follow/follow-event-1",
+      ]),
+    );
+  });
+
+  it("rejects an Undo for a Follow owned by another instance", () => {
+    expect(() =>
+      outboundFollowUndoStatements(
+        {
+          ...outboundUndoInput,
+          followActivityId: "https://other.example/activities/follow/follow-1",
+        },
+        "2026-07-19T00:00:00.000Z",
+      ),
+    ).toThrow("Outbound Follow activity ID must belong to this instance.");
+  });
+
+  it("returns whether the Follow relationship was actually cancelled", async () => {
+    const batches: unknown[][] = [];
+    const database = {
+      prepare(sql: string) {
+        return {
+          bind(...params: unknown[]) {
+            return { sql, params };
+          },
+        };
+      },
+      async batch(statements: unknown[]) {
+        batches.push(statements);
+        return [
+          { meta: { changes: 1 } },
+          { meta: { changes: 1 } },
+          { meta: { changes: 1 } },
+        ];
+      },
+    } as unknown as D1Database;
+
+    await expect(undoOutboundFollow(database, outboundUndoInput)).resolves.toBe(
+      true,
+    );
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(3);
   });
 });
