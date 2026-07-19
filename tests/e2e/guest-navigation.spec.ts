@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "playwright/test";
 
 test("renders the public home page and opens registration without runtime errors", async ({
   page,
