@@ -38,6 +38,7 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
     env.DB,
     thread.id,
     board.visibility === "private" || canViewPrivate,
+    userId,
   );
   return { board, thread, posts: posts.results, session, canReply };
 }
@@ -154,6 +155,21 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
                 回复 #{post.parentPostId}
               </p>
             ) : null}
+            {session ? (
+              <Form
+                method="post"
+                action={`/posts/${post.id}/like`}
+                className="mt-4"
+              >
+                <button className="text-sm text-slate-600 hover:text-blue-700">
+                  {post.viewerLiked ? "取消点赞" : "点赞"}（{post.likeCount}）
+                </button>
+              </Form>
+            ) : (
+              <p className="mt-4 text-xs text-slate-500">
+                点赞 {post.likeCount}
+              </p>
+            )}
           </li>
         ))}
       </ol>

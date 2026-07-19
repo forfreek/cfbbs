@@ -12,6 +12,7 @@ export default [
   route("objects/:postId", "routes/objects.$postId.tsx"),
   route("boards/:boardId", "routes/boards.$boardId.tsx"),
   route("threads/:threadId", "routes/threads.$threadId.tsx"),
+  route("posts/:postId/like", "routes/posts.$postId.like.ts"),
   route("settings/profile", "routes/settings.profile.tsx"),
   route(".well-known/webfinger", "routes/webfinger.ts"),
   route(".well-known/nodeinfo", "routes/nodeinfo.well-known.ts"),
