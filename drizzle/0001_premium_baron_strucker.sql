@@ -6,12 +6,12 @@ CREATE TABLE `account` (
 	`access_token` text,
 	`refresh_token` text,
 	`id_token` text,
-	`access_token_expires_at` text,
-	`refresh_token_expires_at` text,
+	`access_token_expires_at` integer,
+	`refresh_token_expires_at` integer,
 	`scope` text,
 	`password` text,
-	`created_at` text NOT NULL,
-	`updated_at` text NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
@@ -19,10 +19,10 @@ CREATE UNIQUE INDEX `auth_accounts_provider_account_unique` ON `account` (`provi
 CREATE INDEX `auth_accounts_user_index` ON `account` (`user_id`);--> statement-breakpoint
 CREATE TABLE `session` (
 	`id` text PRIMARY KEY NOT NULL,
-	`expires_at` text NOT NULL,
+	`expires_at` integer NOT NULL,
 	`token` text NOT NULL,
-	`created_at` text NOT NULL,
-	`updated_at` text NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
 	`ip_address` text,
 	`user_agent` text,
 	`user_id` text NOT NULL,
@@ -39,8 +39,8 @@ CREATE TABLE `user` (
 	`image` text,
 	`username` text,
 	`display_username` text,
-	`created_at` text NOT NULL,
-	`updated_at` text NOT NULL
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `auth_users_email_unique` ON `user` (`email`);--> statement-breakpoint
@@ -49,9 +49,9 @@ CREATE TABLE `verification` (
 	`id` text PRIMARY KEY NOT NULL,
 	`identifier` text NOT NULL,
 	`value` text NOT NULL,
-	`expires_at` text NOT NULL,
-	`created_at` text,
-	`updated_at` text
+	`expires_at` integer NOT NULL,
+	`created_at` integer,
+	`updated_at` integer
 );
 --> statement-breakpoint
 CREATE INDEX `auth_verifications_identifier_index` ON `verification` (`identifier`);--> statement-breakpoint
