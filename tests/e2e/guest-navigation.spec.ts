@@ -38,10 +38,14 @@ test("requires a local session before opening the following feed", async ({
   expect(errors).toEqual([]);
 });
 
-test("requires a local session before opening board and group administration", async ({
+test("requires a local session before opening protected administration and editing pages", async ({
   page,
 }) => {
-  for (const path of ["/admin/boards", "/admin/groups"]) {
+  for (const path of [
+    "/admin/boards",
+    "/admin/groups",
+    "/posts/missing-post/edit",
+  ]) {
     await page.goto(path, { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/auth\/login$/);
   }

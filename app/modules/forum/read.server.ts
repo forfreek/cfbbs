@@ -18,6 +18,7 @@ export type ForumThread = {
   boardId: string;
   firstPostId: string;
   title: string;
+  isPinned: boolean;
   isLocked: boolean;
   firstPostVisibility: "public" | "private";
   createdAt: string;
@@ -58,7 +59,7 @@ export async function loadForumBoard(database: D1Database, boardId: string) {
 export async function loadForumThread(database: D1Database, threadId: string) {
   return database
     .prepare(
-      "SELECT threads.id, threads.board_id AS boardId, threads.first_post_id AS firstPostId, threads.title, threads.is_locked AS isLocked, first_post.visibility AS firstPostVisibility, threads.created_at AS createdAt FROM threads INNER JOIN posts AS first_post ON first_post.id = threads.first_post_id WHERE threads.id = ? AND first_post.state = 'published'",
+      "SELECT threads.id, threads.board_id AS boardId, threads.first_post_id AS firstPostId, threads.title, threads.is_pinned AS isPinned, threads.is_locked AS isLocked, first_post.visibility AS firstPostVisibility, threads.created_at AS createdAt FROM threads INNER JOIN posts AS first_post ON first_post.id = threads.first_post_id WHERE threads.id = ? AND first_post.state = 'published'",
     )
     .bind(threadId)
     .first<ForumThread>();
@@ -80,7 +81,7 @@ export async function listForumBoardThreads(
     : "AND activity_post.visibility = 'public'";
   return database
     .prepare(
-      `SELECT threads.id, threads.board_id AS boardId, threads.first_post_id AS firstPostId, threads.title, threads.is_locked AS isLocked, first_post.visibility AS firstPostVisibility, threads.created_at AS createdAt, profiles.handle AS authorHandle, profiles.display_name AS authorName, (SELECT COUNT(*) FROM posts AS reply WHERE reply.thread_id = threads.id AND reply.id != threads.first_post_id AND reply.state = 'published' ${visibleReplies}) AS replyCount, (SELECT MAX(activity_post.published_at) FROM posts AS activity_post WHERE activity_post.thread_id = threads.id AND activity_post.state = 'published' ${visibleActivity}) AS activityAt FROM threads INNER JOIN posts AS first_post ON first_post.id = threads.first_post_id LEFT JOIN profiles ON profiles.user_id = first_post.author_user_id WHERE threads.board_id = ? AND first_post.state = 'published' ${visiblePosts} ORDER BY threads.is_pinned DESC, activityAt DESC, threads.id DESC LIMIT 50`,
+      `SELECT threads.id, threads.board_id AS boardId, threads.first_post_id AS firstPostId, threads.title, threads.is_pinned AS isPinned, threads.is_locked AS isLocked, first_post.visibility AS firstPostVisibility, threads.created_at AS createdAt, profiles.handle AS authorHandle, profiles.display_name AS authorName, (SELECT COUNT(*) FROM posts AS reply WHERE reply.thread_id = threads.id AND reply.id != threads.first_post_id AND reply.state = 'published' ${visibleReplies}) AS replyCount, (SELECT MAX(activity_post.published_at) FROM posts AS activity_post WHERE activity_post.thread_id = threads.id AND activity_post.state = 'published' ${visibleActivity}) AS activityAt FROM threads INNER JOIN posts AS first_post ON first_post.id = threads.first_post_id LEFT JOIN profiles ON profiles.user_id = first_post.author_user_id WHERE threads.board_id = ? AND first_post.state = 'published' ${visiblePosts} ORDER BY threads.is_pinned DESC, activityAt DESC, threads.id DESC LIMIT 50`,
     )
     .bind(boardId)
     .all<ForumThreadSummary>();

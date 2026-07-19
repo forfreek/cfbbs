@@ -191,7 +191,7 @@ Invariants:
 **Files:** `app/modules/forum/threads/*`, `app/modules/forum/posts/*`, `app/modules/forum/markdown/*`, `app/modules/forum/notifications/*`, `app/routes/boards.*`, `app/routes/threads.*`, `tests/integration/forum/*`
 
 - [ ] Implement public/private board listings and cursor-based topic navigation.
-- [ ] Implement topic creation, chronological replies, `inReplyTo`, editing, soft deletion, locking, pinning, and revision history.
+- [x] Implement topic creation, chronological replies, `inReplyTo`, editing, soft deletion, locking, pinning, and revision history.
 - [ ] Parse Markdown server-side and sanitize links and HTML against script execution, unsafe protocols, and event-handler attributes.
 - [ ] Implement idempotent likes and unread notifications for replies, follows, and likes.
 - [ ] Ensure notification payloads never expose a private board title, author, or excerpt to an unauthorized viewer.
@@ -230,7 +230,7 @@ Invariants:
 
 **Files:** `app/modules/federation/listeners/*`, `app/modules/federation/delivery/*`, `app/modules/jobs/federation-outbox.server.ts`, `app/worker.ts`, `tests/integration/federation/*`
 
-- [ ] Support `Follow`, `Accept`, `Reject`, `Undo`, `Create`, `Update`, `Delete`, and `Like`/`Undo Like`.
+- [x] Support `Follow`, `Accept`, `Reject`, `Undo`, `Create`, `Update`, `Delete`, and `Like`/`Undo Like`.
 - [ ] Reject unsigned or replayed activities, deduplicate Activity IDs, verify Actor/Object ownership, and sanitize remote HTML.
 - [x] Restrict remote fetches to HTTPS with bounded redirects, response size, timeout, and acceptable ActivityStreams content types.
 - [ ] Process Fedify Queue messages in the Worker queue handler and route permanent failures to the DLQ.

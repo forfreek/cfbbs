@@ -15,6 +15,7 @@ import {
 } from "@/modules/forum/read.server";
 import { createReply } from "@/modules/forum/posts/service";
 import { getSession } from "@/modules/identity/auth.server";
+import { authorizeDatabase } from "@/modules/permissions/authorization.server";
 
 async function threadPageData(request: Request, env: Env, threadId: string) {
   const thread = await loadForumThread(env.DB, threadId);
@@ -24,13 +25,41 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
 
   const session = await getSession(request, env);
   const userId = session?.user.id ?? null;
-  const [canViewBoard, canViewPrivate, canReply, boardIsPrivate] =
-    await Promise.all([
-      canViewForumBoard(env.DB, board, userId),
-      canViewPrivateForumContent(env.DB, board, userId),
-      canReplyInForumBoard(env.DB, board, userId),
-      isForumBoardWithinPrivateTree(env.DB, board.id),
-    ]);
+  const [
+    canViewBoard,
+    canViewPrivate,
+    canReply,
+    boardIsPrivate,
+    editAny,
+    deleteAny,
+    canPin,
+    canLock,
+  ] = await Promise.all([
+    canViewForumBoard(env.DB, board, userId),
+    canViewPrivateForumContent(env.DB, board, userId),
+    canReplyInForumBoard(env.DB, board, userId),
+    isForumBoardWithinPrivateTree(env.DB, board.id),
+    authorizeDatabase(env.DB, {
+      userId,
+      permission: "posts.edit_any",
+      boardId: board.id,
+    }),
+    authorizeDatabase(env.DB, {
+      userId,
+      permission: "posts.delete_any",
+      boardId: board.id,
+    }),
+    authorizeDatabase(env.DB, {
+      userId,
+      permission: "threads.pin",
+      boardId: board.id,
+    }),
+    authorizeDatabase(env.DB, {
+      userId,
+      permission: "threads.lock",
+      boardId: board.id,
+    }),
+  ]);
   if (
     !canViewBoard ||
     (thread.firstPostVisibility === "private" && !canViewPrivate)
@@ -43,7 +72,17 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
     boardIsPrivate || canViewPrivate,
     userId,
   );
-  return { board, thread, posts: posts.results, session, canReply };
+  return {
+    board,
+    thread,
+    posts: posts.results,
+    session,
+    canReply,
+    canEditAny: editAny.allowed,
+    canDeleteAny: deleteAny.allowed,
+    canPin: canPin.allowed,
+    canLock: canLock.allowed,
+  };
 }
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
@@ -116,7 +155,17 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
 export default function ThreadPage({ loaderData }: Route.ComponentProps) {
   const actionData = useActionData<typeof action>();
-  const { board, thread, posts, session, canReply } = loaderData;
+  const {
+    board,
+    thread,
+    posts,
+    session,
+    canReply,
+    canEditAny,
+    canDeleteAny,
+    canPin,
+    canLock,
+  } = loaderData;
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <p className="text-sm text-slate-500">
@@ -132,6 +181,37 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
       </h1>
       {thread.isLocked ? (
         <p className="mt-3 text-sm text-amber-700">本主题已锁定。</p>
+      ) : null}
+      {thread.isPinned ? (
+        <p className="mt-2 text-sm text-blue-700">本主题已置顶。</p>
+      ) : null}
+      {session && (canPin || canLock) ? (
+        <div className="mt-4 flex flex-wrap gap-3 text-sm">
+          {canPin ? (
+            <Form method="post" action={`/threads/${thread.id}/moderation`}>
+              <input
+                type="hidden"
+                name="intent"
+                value={thread.isPinned ? "unpin" : "pin"}
+              />
+              <button className="rounded-md border px-3 py-1.5 hover:bg-slate-50">
+                {thread.isPinned ? "取消置顶" : "置顶主题"}
+              </button>
+            </Form>
+          ) : null}
+          {canLock ? (
+            <Form method="post" action={`/threads/${thread.id}/moderation`}>
+              <input
+                type="hidden"
+                name="intent"
+                value={thread.isLocked ? "unlock" : "lock"}
+              />
+              <button className="rounded-md border px-3 py-1.5 hover:bg-slate-50">
+                {thread.isLocked ? "解除锁定" : "锁定主题"}
+              </button>
+            </Form>
+          ) : null}
+        </div>
       ) : null}
 
       <ol className="mt-8 space-y-6">
@@ -176,6 +256,23 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
                     {post.viewerLiked ? "取消点赞" : "点赞"}（{post.likeCount}）
                   </button>
                 </Form>
+                {post.authorUserId !== null &&
+                (post.authorUserId === session.user.id || canEditAny) ? (
+                  <Link
+                    className="text-sm text-slate-600 hover:text-blue-700"
+                    to={`/posts/${post.id}/edit`}
+                  >
+                    编辑
+                  </Link>
+                ) : null}
+                {post.authorUserId !== null &&
+                (post.authorUserId === session.user.id || canDeleteAny) ? (
+                  <Form method="post" action={`/posts/${post.id}/delete`}>
+                    <button className="text-sm text-red-700 hover:text-red-900">
+                      删除
+                    </button>
+                  </Form>
+                ) : null}
                 <details className="text-sm text-slate-500">
                   <summary className="cursor-pointer hover:text-slate-900">
                     举报

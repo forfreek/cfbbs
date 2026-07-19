@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createNoteActivity } from "@/modules/federation/outbox";
+import {
+  createNoteActivity,
+  createNoteDeleteActivity,
+  createNoteUpdateActivity,
+  publicPostDeleteOutboxStatements,
+  publicPostUpdateOutboxStatements,
+} from "@/modules/federation/outbox";
 import { createReply } from "@/modules/forum/posts/service";
 import { createThread } from "@/modules/forum/threads/service";
 
@@ -57,6 +63,77 @@ describe("public post federation publication", () => {
         id: "https://bbs.example.test/objects/post-1",
       },
     });
+  });
+
+  it("uses fresh, stable URLs for Update and Delete activities", () => {
+    const post = {
+      id: "post-1",
+      authorHandle: "alice",
+      html: "<p>Updated</p>",
+      publishedAt: "2026-07-19T00:00:00.000Z",
+      updatedAt: "2026-07-19T01:00:00.000Z",
+      parentPostId: null,
+    };
+
+    expect(
+      createNoteUpdateActivity("https://bbs.example.test", "event-1", post),
+    ).toMatchObject({
+      id: "https://bbs.example.test/activities/update/post-1/event-1",
+      type: "Update",
+      object: { id: "https://bbs.example.test/objects/post-1" },
+    });
+    expect(
+      createNoteDeleteActivity("https://bbs.example.test", "event-2", {
+        postId: "post-1",
+        authorHandle: "alice",
+      }),
+    ).toMatchObject({
+      id: "https://bbs.example.test/activities/delete/post-1/event-2",
+      type: "Delete",
+      object: "https://bbs.example.test/objects/post-1",
+    });
+  });
+
+  it("replaces prior retry state when a post Update is superseded", async () => {
+    const { database } = forumDatabase();
+
+    const statements = await publicPostUpdateOutboxStatements(database, {
+      postId: "post-1",
+      authorUserId: "user-1",
+      visibility: "public",
+      origin: "local",
+      html: "<p>Updated</p>",
+      publishedAt: "2026-07-19T00:00:00.000Z",
+      updatedAt: "2026-07-19T01:00:00.000Z",
+      parentPostId: null,
+      publication: {
+        eventId: "event-1",
+        actorId: "user-1",
+        origin: "https://bbs.example.test",
+      },
+    });
+
+    expect(statements).toHaveLength(3);
+    expect(statements[0]?.sql).toContain("DELETE FROM federation_deliveries");
+    expect(statements[1]?.sql).toContain(
+      "DELETE FROM federation_outbox_events",
+    );
+    expect(statements[2]?.params).toEqual(
+      expect.arrayContaining(["event-1", "Update"]),
+    );
+  });
+
+  it("does not generate a Delete event for private posts", async () => {
+    const { database } = forumDatabase();
+
+    await expect(
+      publicPostDeleteOutboxStatements(database, {
+        postId: "post-1",
+        authorUserId: "user-1",
+        visibility: "private",
+        origin: "local",
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("writes a public thread and its Create event in one D1 batch", async () => {

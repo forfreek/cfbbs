@@ -14,6 +14,12 @@ export default [
   route("objects/:postId", "routes/objects.$postId.tsx"),
   route("boards/:boardId", "routes/boards.$boardId.tsx"),
   route("threads/:threadId", "routes/threads.$threadId.tsx"),
+  route(
+    "threads/:threadId/moderation",
+    "routes/threads.$threadId.moderation.ts",
+  ),
+  route("posts/:postId/edit", "routes/posts.$postId.edit.tsx"),
+  route("posts/:postId/delete", "routes/posts.$postId.delete.ts"),
   route("posts/:postId/like", "routes/posts.$postId.like.ts"),
   route("posts/:postId/report", "routes/posts.$postId.report.ts"),
   route("settings/profile", "routes/settings.profile.tsx"),
