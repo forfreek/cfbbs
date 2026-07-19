@@ -151,3 +151,27 @@ export async function undoRemoteFollow(
     .run();
   return result.meta.changes === 1;
 }
+
+export async function settleOutboundFollow(
+  database: D1Database,
+  input: {
+    followActivityId: string;
+    localActorId: string;
+    remoteActorUri: string;
+    state: "accepted" | "rejected";
+  },
+) {
+  const result = await database
+    .prepare(
+      "UPDATE federation_follows SET state = ?, updated_at = ? WHERE follow_activity_id = ? AND follower_actor_id = ? AND following_actor_id = ? AND state = 'pending'",
+    )
+    .bind(
+      input.state,
+      new Date().toISOString(),
+      input.followActivityId,
+      input.localActorId,
+      input.remoteActorUri,
+    )
+    .run();
+  return result.meta.changes === 1;
+}

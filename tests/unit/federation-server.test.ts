@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Follow, Undo } from "@fedify/vocab";
+import { Accept, Follow, Reject, Undo } from "@fedify/vocab";
 
 import {
   generateFederationSigningKeyPair,
@@ -7,7 +7,9 @@ import {
 } from "@/modules/federation/keys";
 import {
   createWorkerFederation,
+  processInboundFollowAccept,
   processInboundFollow,
+  processInboundFollowReject,
   processInboundUndo,
 } from "@/modules/federation/server";
 
@@ -265,6 +267,58 @@ describe("Fedify inbox gateway", () => {
         ),
       ),
     ).toBe(false);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("state = 'rejected'"),
+      ),
+    ).toBe(true);
+  });
+
+  it("accepts a remote response only for the matching pending outbound Follow", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const database = inboxDatabase(statements);
+    const remoteActor = "https://remote.example/users/bob";
+    const accept = new Accept({
+      id: new URL("https://remote.example/activities/accept-follow-1"),
+      actor: new URL(remoteActor),
+      object: new URL("https://bbs.example.test/activities/follow/follow-1"),
+    });
+
+    await processInboundFollowAccept(inboxContext(database), accept);
+
+    const update = statements.find((statement) =>
+      statement.sql.includes("UPDATE federation_follows SET state = ?"),
+    );
+    expect(update?.params).toEqual(
+      expect.arrayContaining([
+        "accepted",
+        "https://bbs.example.test/activities/follow/follow-1",
+        "user-1",
+        remoteActor,
+      ]),
+    );
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("state = 'processed'"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a remote Reject that does not match a pending outbound Follow", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const database = inboxDatabase(statements, { followChanges: 0 });
+    const reject = new Reject({
+      id: new URL("https://remote.example/activities/reject-follow-1"),
+      actor: new URL("https://remote.example/users/bob"),
+      object: new URL("https://bbs.example.test/activities/follow/follow-1"),
+    });
+
+    await processInboundFollowReject(inboxContext(database), reject);
+
+    const update = statements.find((statement) =>
+      statement.sql.includes("UPDATE federation_follows SET state = ?"),
+    );
+    expect(update?.params).toContain("rejected");
     expect(
       statements.some((statement) =>
         statement.sql.includes("state = 'rejected'"),

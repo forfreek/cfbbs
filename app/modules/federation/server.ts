@@ -4,11 +4,19 @@ import {
   type Federation,
   type InboxContext,
 } from "@fedify/fedify";
-import { CryptographicKey, Follow, Person, Undo } from "@fedify/vocab";
+import {
+  Accept,
+  CryptographicKey,
+  Follow,
+  Person,
+  Reject,
+  Undo,
+} from "@fedify/vocab";
 
 import {
   acceptRemoteFollow,
   type RemoteFollower,
+  settleOutboundFollow,
   undoRemoteFollow,
 } from "./follows";
 import {
@@ -231,6 +239,68 @@ export async function processInboundUndo(
   }
 }
 
+async function processInboundFollowOutcome(
+  context: InboxContext<FederationEnvironment>,
+  activity: Accept | Reject,
+  state: "accepted" | "rejected",
+) {
+  const activityId = activity.id?.href;
+  const actorUri = activity.actorId?.href;
+  const followActivityId = activity.objectId?.href;
+  const recipient = context.recipient;
+  if (!activityId || !actorUri || !followActivityId || !recipient) return;
+  if (!validateInboxActivity({ activityId, actorUri }).ok) return;
+  if (!validateInboxActivity({ activityId: followActivityId, actorUri }).ok) {
+    return;
+  }
+
+  const localActor = await loadLocalActor(context.data.DB, recipient);
+  if (!localActor) return;
+  const claimed = await claimInboxActivity(context.data.DB, {
+    activityId,
+    actorUri,
+  });
+  if (!claimed) return;
+
+  try {
+    if (await isBlockedRemoteActor(context.data.DB, actorUri)) {
+      throw new RejectedInboundActivity("Remote actor or instance is blocked.");
+    }
+    if (
+      !(await settleOutboundFollow(context.data.DB, {
+        followActivityId,
+        localActorId: localActor.id,
+        remoteActorUri: actorUri,
+        state,
+      }))
+    ) {
+      throw new RejectedInboundActivity("Follow relationship is not pending.");
+    }
+    await completeInboxActivity(context.data.DB, activityId);
+  } catch (error) {
+    if (error instanceof RejectedInboundActivity) {
+      await rejectInboxActivity(context.data.DB, activityId, error.message);
+      return;
+    }
+    await releaseInboxActivity(context.data.DB, activityId);
+    throw error;
+  }
+}
+
+export function processInboundFollowAccept(
+  context: InboxContext<FederationEnvironment>,
+  accept: Accept,
+) {
+  return processInboundFollowOutcome(context, accept, "accepted");
+}
+
+export function processInboundFollowReject(
+  context: InboxContext<FederationEnvironment>,
+  reject: Reject,
+) {
+  return processInboundFollowOutcome(context, reject, "rejected");
+}
+
 const builder = createFederationBuilder<FederationEnvironment>();
 
 builder
@@ -276,7 +346,9 @@ builder
   .setInboxListeners("/users/{identifier}/inbox")
   .withIdempotency("global")
   .on(Follow, processInboundFollow)
-  .on(Undo, processInboundUndo);
+  .on(Undo, processInboundUndo)
+  .on(Accept, processInboundFollowAccept)
+  .on(Reject, processInboundFollowReject);
 
 export async function createWorkerFederation(
   environment: FederationEnvironment,

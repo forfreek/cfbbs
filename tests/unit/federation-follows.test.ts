@@ -4,6 +4,7 @@ import {
   acceptRemoteFollow,
   acceptedRemoteFollowStatements,
   createFollowAcceptActivity,
+  settleOutboundFollow,
   undoRemoteFollow,
   type AcceptedRemoteFollow,
 } from "@/modules/federation/follows";
@@ -109,6 +110,38 @@ describe("accepted remote follows", () => {
         input.followActivityId,
         input.follower.uri,
         input.localActorId,
+      ]),
+    );
+  });
+
+  it("only settles the matching pending outbound Follow", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const database = {
+      prepare(sql: string) {
+        return {
+          bind(...params: unknown[]) {
+            statements.push({ sql, params });
+            return { run: async () => ({ meta: { changes: 1 } }) };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await expect(
+      settleOutboundFollow(database, {
+        followActivityId: input.followActivityId,
+        localActorId: input.localActorId,
+        remoteActorUri: input.follower.uri,
+        state: "accepted",
+      }),
+    ).resolves.toBe(true);
+    expect(statements[0]?.sql).toContain("state = 'pending'");
+    expect(statements[0]?.params).toEqual(
+      expect.arrayContaining([
+        "accepted",
+        input.followActivityId,
+        input.localActorId,
+        input.follower.uri,
       ]),
     );
   });
