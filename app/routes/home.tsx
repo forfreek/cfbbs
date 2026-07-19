@@ -1,13 +1,11 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  CircleDot,
-  Folder,
-  Home as HomeIcon,
-  PenLine,
-  Search,
-  Sparkles,
-} from "lucide-react";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.mjs";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.mjs";
+import CircleDot from "lucide-react/dist/esm/icons/circle-dot.mjs";
+import Folder from "lucide-react/dist/esm/icons/folder.mjs";
+import HomeIcon from "lucide-react/dist/esm/icons/home.mjs";
+import PenLine from "lucide-react/dist/esm/icons/pen-line.mjs";
+import Search from "lucide-react/dist/esm/icons/search.mjs";
+import Sparkles from "lucide-react/dist/esm/icons/sparkles.mjs";
 import { Link } from "react-router";
 
 import type { Route } from "./+types/home";
