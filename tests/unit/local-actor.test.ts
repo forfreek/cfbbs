@@ -30,6 +30,7 @@ describe("local federation actors", () => {
         "https://bbs.example.test/users/alice",
         "@alice@bbs.example.test",
         "https://bbs.example.test/users/alice/inbox",
+        "https://bbs.example.test/inbox",
         "https://bbs.example.test/users/alice/outbox",
         "https://bbs.example.test/users/alice/followers",
         "-----BEGIN PUBLIC KEY-----\\npublic\\n-----END PUBLIC KEY-----",

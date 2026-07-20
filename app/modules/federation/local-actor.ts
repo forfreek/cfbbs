@@ -41,12 +41,13 @@ export function localActorInsertStatements(
       ],
     },
     {
-      sql: "INSERT INTO federation_actors (id, uri, handle, inbox_url, shared_inbox_url, outbox_url, followers_url, public_key_pem, name, summary_html, avatar_url, is_local, blocked_at, last_fetched_at, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, '', NULL, 1, NULL, ?, ?, ?)",
+      sql: "INSERT INTO federation_actors (id, uri, handle, inbox_url, shared_inbox_url, outbox_url, followers_url, public_key_pem, name, summary_html, avatar_url, is_local, blocked_at, last_fetched_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', NULL, 1, NULL, ?, ?, ?)",
       params: [
         input.userId,
         uri,
         federationHandle,
         new URL(`/users/${handle.value}/inbox`, input.origin).href,
+        new URL("/inbox", input.origin).href,
         new URL(`/users/${handle.value}/outbox`, input.origin).href,
         new URL(`/users/${handle.value}/followers`, input.origin).href,
         keys.publicKeyPem,

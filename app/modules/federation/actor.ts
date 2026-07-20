@@ -18,6 +18,7 @@ export function personActor(origin: string, profile: PublicProfile) {
     name: profile.displayName,
     summary: profile.bio,
     inbox: new URL(`/users/${profile.handle}/inbox`, origin).href,
+    endpoints: { sharedInbox: new URL("/inbox", origin).href },
     outbox: new URL(`/users/${profile.handle}/outbox`, origin).href,
     followers: new URL(`/users/${profile.handle}/followers`, origin).href,
     following: new URL(`/users/${profile.handle}/following`, origin).href,

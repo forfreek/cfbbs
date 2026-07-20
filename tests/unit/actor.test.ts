@@ -12,6 +12,7 @@ describe("ActivityPub Person", () =>
       type: "Person",
       id: "https://bbs.example.test/users/alice",
       inbox: "https://bbs.example.test/users/alice/inbox",
+      endpoints: { sharedInbox: "https://bbs.example.test/inbox" },
     });
     expect(actor).not.toHaveProperty("federationPrivateKeyEncrypted");
   }));

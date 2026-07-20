@@ -102,6 +102,7 @@ describe("Fedify inbox gateway", () => {
       type: "Person",
       preferredUsername: "alice",
       inbox: "https://bbs.example.test/users/alice/inbox",
+      endpoints: { sharedInbox: "https://bbs.example.test/inbox" },
       publicKey: {
         id: "https://bbs.example.test/users/alice#main-key",
         owner: "https://bbs.example.test/users/alice",
@@ -134,7 +135,32 @@ describe("Fedify inbox gateway", () => {
     expect(response.status).toBe(401);
   });
 
-  it("accepts a verified Follow into an atomic direct Accept delivery", async () => {
+  it("exposes the shared inbox with the same signature requirement", async () => {
+    const { environment } = federationEnvironment();
+    const federation = await createWorkerFederation(environment);
+
+    const response = await federation.fetch(
+      new Request("https://bbs.example.test/inbox", {
+        method: "POST",
+        headers: {
+          accept: "application/activity+json",
+          "content-type": "application/activity+json",
+        },
+        body: JSON.stringify({
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: "https://remote.example/activities/follow-shared-1",
+          type: "Follow",
+          actor: "https://remote.example/users/bob",
+          object: "https://bbs.example.test/users/alice",
+        }),
+      }),
+      { contextData: environment },
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("routes a verified shared-inbox Follow into an atomic direct Accept delivery", async () => {
     const localPair =
       await generateFederationSigningKeyPair("encryption-secret");
     const remotePair = await generateFederationSigningKeyPair(
@@ -192,7 +218,7 @@ describe("Fedify inbox gateway", () => {
 
     await processInboundFollow(
       {
-        recipient: "alice",
+        recipient: null,
         data: {
           APP_ORIGIN: "https://bbs.example.test",
           FEDERATION_KEY_ENCRYPTION_SECRET: "encryption-secret",
@@ -360,7 +386,7 @@ describe("Fedify inbox gateway", () => {
     ).toBe(true);
   });
 
-  it("stores a public Create from an accepted remote follow", async () => {
+  it("stores a public shared-inbox Create from an accepted remote follow", async () => {
     const statements: Array<{ sql: string; params: unknown[] }> = [];
     const batches: unknown[][] = [];
     const database = remoteNoteDatabase(statements, batches);
@@ -376,7 +402,10 @@ describe("Fedify inbox gateway", () => {
       }),
     });
 
-    await processInboundCreate(inboxContext(database), create);
+    await processInboundCreate(
+      { ...inboxContext(database), recipient: null } as never,
+      create,
+    );
 
     expect(batches).toHaveLength(1);
     expect(
@@ -546,6 +575,31 @@ describe("Fedify inbox gateway", () => {
     expect(
       statements.some((statement) =>
         statement.sql.includes("state = 'processed'"),
+      ),
+    ).toBe(true);
+  });
+
+  it("routes a remote Like from the shared inbox by its public local target", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const batches: unknown[][] = [];
+    const database = remoteNoteDatabase(statements, batches, {
+      likeTarget: true,
+    });
+    const activity = new Like({
+      id: new URL("https://remote.example/activities/like-shared-1"),
+      actor: new URL("https://remote.example/users/bob"),
+      object: new URL("https://bbs.example.test/objects/post-1"),
+    });
+
+    await processInboundLike(
+      { ...inboxContext(database), recipient: null } as never,
+      activity,
+    );
+
+    expect(batches).toHaveLength(1);
+    expect(
+      statements.some((statement) =>
+        statement.sql.includes("INSERT OR IGNORE INTO post_likes"),
       ),
     ).toBe(true);
   });

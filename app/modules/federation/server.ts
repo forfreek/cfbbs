@@ -9,6 +9,7 @@ import {
   Create,
   CryptographicKey,
   Delete,
+  Endpoints,
   Follow,
   Like,
   Note,
@@ -141,6 +142,60 @@ async function loadLocalActor(
     )
     .bind(handle)
     .first<LocalActor>();
+}
+
+async function loadLocalActorByUri(database: D1Database, uri: string) {
+  return database
+    .prepare(
+      "SELECT federation_actors.id, profiles.handle FROM federation_actors INNER JOIN profiles ON profiles.user_id = federation_actors.id WHERE federation_actors.is_local = 1 AND federation_actors.uri = ? LIMIT 1",
+    )
+    .bind(uri)
+    .first<LocalActor>();
+}
+
+async function loadDirectInboxRecipient(
+  context: InboxContext<FederationEnvironment>,
+) {
+  if (!context.recipient) return null;
+  return loadLocalActor(context.data.DB, context.recipient);
+}
+
+async function loadLocalActorForInboundFollow(
+  database: D1Database,
+  followActivityId: string,
+  followerActorUri: string,
+) {
+  return database
+    .prepare(
+      "SELECT federation_actors.id, profiles.handle FROM federation_follows INNER JOIN federation_actors ON federation_actors.id = federation_follows.following_actor_id INNER JOIN profiles ON profiles.user_id = federation_actors.id WHERE federation_follows.follow_activity_id = ? AND federation_follows.follower_actor_id = ? AND federation_actors.is_local = 1 LIMIT 1",
+    )
+    .bind(followActivityId, followerActorUri)
+    .first<LocalActor>();
+}
+
+async function loadLocalActorForOutboundFollow(
+  database: D1Database,
+  followActivityId: string,
+  remoteActorUri: string,
+) {
+  return database
+    .prepare(
+      "SELECT federation_actors.id, profiles.handle FROM federation_follows INNER JOIN federation_actors ON federation_actors.id = federation_follows.follower_actor_id INNER JOIN profiles ON profiles.user_id = federation_actors.id WHERE federation_follows.follow_activity_id = ? AND federation_follows.following_actor_id = ? AND federation_actors.is_local = 1 LIMIT 1",
+    )
+    .bind(followActivityId, remoteActorUri)
+    .first<LocalActor>();
+}
+
+async function isRemoteActorFollowedByAnyLocalUser(
+  database: D1Database,
+  remoteActorUri: string,
+) {
+  return database
+    .prepare(
+      "SELECT 1 FROM federation_follows INNER JOIN federation_actors ON federation_actors.id = federation_follows.follower_actor_id WHERE federation_follows.following_actor_id = ? AND federation_follows.state = 'accepted' AND federation_actors.is_local = 1 LIMIT 1",
+    )
+    .bind(remoteActorUri)
+    .first<{ 1: number }>();
 }
 
 async function loadLocalActorProfile(
@@ -279,11 +334,16 @@ export async function processInboundFollow(
 ) {
   const activityId = follow.id?.href;
   const actorUri = follow.actorId?.href;
-  const recipient = context.recipient;
-  if (!activityId || !actorUri || !recipient) return;
+  if (!activityId || !actorUri) return;
   if (!validateInboxActivity({ activityId, actorUri }).ok) return;
 
-  const localActor = await loadLocalActor(context.data.DB, recipient);
+  const directRecipient = await loadDirectInboxRecipient(context);
+  if (context.recipient && !directRecipient) return;
+  const localActor =
+    directRecipient ??
+    (follow.objectId
+      ? await loadLocalActorByUri(context.data.DB, follow.objectId.href)
+      : null);
   if (!localActor) return;
   const expectedObject = new URL(
     `/users/${localActor.handle}`,
@@ -328,15 +388,21 @@ export async function processInboundUndo(
   const activityId = undo.id?.href;
   const actorUri = undo.actorId?.href;
   const followActivityId = undo.objectId?.href;
-  const recipient = context.recipient;
-  if (!activityId || !actorUri || !followActivityId || !recipient) return;
+  if (!activityId || !actorUri || !followActivityId) return;
   if (!validateInboxActivity({ activityId, actorUri }).ok) return;
   if (!validateInboxActivity({ activityId: followActivityId, actorUri }).ok) {
     return;
   }
 
-  const localActor = await loadLocalActor(context.data.DB, recipient);
-  if (!localActor) return;
+  const directRecipient = await loadDirectInboxRecipient(context);
+  if (context.recipient && !directRecipient) return;
+  const localActor =
+    directRecipient ??
+    (await loadLocalActorForInboundFollow(
+      context.data.DB,
+      followActivityId,
+      actorUri,
+    ));
   const claimed = await claimInboxActivity(context.data.DB, {
     activityId,
     actorUri,
@@ -347,11 +413,13 @@ export async function processInboundUndo(
     if (await isBlockedRemoteActor(context.data.DB, actorUri)) {
       throw new RejectedInboundActivity("Remote actor or instance is blocked.");
     }
-    const undoneFollow = await undoRemoteFollow(context.data.DB, {
-      followActivityId,
-      followerActorUri: actorUri,
-      localActorId: localActor.id,
-    });
+    const undoneFollow = localActor
+      ? await undoRemoteFollow(context.data.DB, {
+          followActivityId,
+          followerActorUri: actorUri,
+          localActorId: localActor.id,
+        })
+      : false;
     if (!undoneFollow) {
       const undoneLike = await undoRemoteLike(context.data.DB, {
         activityId: followActivityId,
@@ -381,12 +449,11 @@ export async function processInboundLike(
   const activityId = like.id?.href;
   const actorUri = like.actorId?.href;
   const objectUri = like.objectId?.href;
-  const recipient = context.recipient;
-  if (!activityId || !actorUri || !objectUri || !recipient) return;
+  if (!activityId || !actorUri || !objectUri) return;
   if (!validateInboxActivity({ activityId, actorUri }).ok) return;
 
-  const localActor = await loadLocalActor(context.data.DB, recipient);
-  if (!localActor) return;
+  const directRecipient = await loadDirectInboxRecipient(context);
+  if (context.recipient && !directRecipient) return;
   const claimed = await claimInboxActivity(context.data.DB, {
     activityId,
     actorUri,
@@ -401,7 +468,10 @@ export async function processInboundLike(
       throw new RejectedInboundActivity("Like must target this instance.");
     }
     const target = await loadLocalLikeTarget(context.data.DB, objectUri);
-    if (!target || target.authorUserId !== localActor.id) {
+    if (
+      !target ||
+      (directRecipient && target.authorUserId !== directRecipient.id)
+    ) {
       throw new RejectedInboundActivity(
         "Like does not target this inbox owner.",
       );
@@ -432,14 +502,21 @@ async function processInboundFollowOutcome(
   const activityId = activity.id?.href;
   const actorUri = activity.actorId?.href;
   const followActivityId = activity.objectId?.href;
-  const recipient = context.recipient;
-  if (!activityId || !actorUri || !followActivityId || !recipient) return;
+  if (!activityId || !actorUri || !followActivityId) return;
   if (!validateInboxActivity({ activityId, actorUri }).ok) return;
   if (!validateInboxActivity({ activityId: followActivityId, actorUri }).ok) {
     return;
   }
 
-  const localActor = await loadLocalActor(context.data.DB, recipient);
+  const directRecipient = await loadDirectInboxRecipient(context);
+  if (context.recipient && !directRecipient) return;
+  const localActor =
+    directRecipient ??
+    (await loadLocalActorForOutboundFollow(
+      context.data.DB,
+      followActivityId,
+      actorUri,
+    ));
   if (!localActor) return;
   const claimed = await claimInboxActivity(context.data.DB, {
     activityId,
@@ -493,12 +570,11 @@ async function processInboundRemoteNoteActivity(
 ) {
   const activityId = activity.id?.href;
   const actorUri = activity.actorId?.href;
-  const recipient = context.recipient;
-  if (!activityId || !actorUri || !recipient) return;
+  if (!activityId || !actorUri) return;
   if (!validateInboxActivity({ activityId, actorUri }).ok) return;
 
-  const localActor = await loadLocalActor(context.data.DB, recipient);
-  if (!localActor) return;
+  const directRecipient = await loadDirectInboxRecipient(context);
+  if (context.recipient && !directRecipient) return;
   const claimed = await claimInboxActivity(context.data.DB, {
     activityId,
     actorUri,
@@ -587,11 +663,16 @@ async function processInboundRemoteNoteActivity(
         });
       } else {
         if (
-          !(await loadFollowedRemoteActor(
-            context.data.DB,
-            localActor.id,
-            actorUri,
-          ))
+          !(directRecipient
+            ? await loadFollowedRemoteActor(
+                context.data.DB,
+                directRecipient.id,
+                actorUri,
+              )
+            : await isRemoteActorFollowedByAnyLocalUser(
+                context.data.DB,
+                actorUri,
+              ))
         ) {
           throw new RejectedInboundActivity("Remote actor is not followed.");
         }
@@ -630,13 +711,12 @@ export async function processInboundDelete(
   const activityId = activity.id?.href;
   const actorUri = activity.actorId?.href;
   const objectUri = activity.objectId?.href;
-  const recipient = context.recipient;
-  if (!activityId || !actorUri || !objectUri || !recipient) return;
+  if (!activityId || !actorUri || !objectUri) return;
   if (!validateInboxActivity({ activityId, actorUri }).ok) return;
   if (!isSafeRemoteUrl(objectUri)) return;
 
-  const localActor = await loadLocalActor(context.data.DB, recipient);
-  if (!localActor) return;
+  const directRecipient = await loadDirectInboxRecipient(context);
+  if (context.recipient && !directRecipient) return;
   const claimed = await claimInboxActivity(context.data.DB, {
     activityId,
     actorUri,
@@ -683,6 +763,7 @@ builder
       name: actor.displayName,
       summary: actor.bio,
       inbox: context.getInboxUri(identifier),
+      endpoints: new Endpoints({ sharedInbox: context.getInboxUri() }),
       outbox: new URL(`/users/${actor.handle}/outbox`, context.canonicalOrigin),
       followers: new URL(
         `/users/${actor.handle}/followers`,
@@ -711,7 +792,7 @@ builder
   });
 
 builder
-  .setInboxListeners("/users/{identifier}/inbox")
+  .setInboxListeners("/users/{identifier}/inbox", "/inbox")
   .withIdempotency("global")
   .on(Follow, processInboundFollow)
   .on(Undo, processInboundUndo)
