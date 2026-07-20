@@ -4,11 +4,14 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
-    cloudflare({ viteEnvironment: { name: "ssr" } }),
+    cloudflare({
+      viteEnvironment: { name: "ssr" },
+      ...(mode === "e2e" ? { configPath: "./wrangler.e2e.json" } : {}),
+    }),
     tailwindcss(),
     reactRouter(),
     tsconfigPaths(),
   ],
-});
+}));

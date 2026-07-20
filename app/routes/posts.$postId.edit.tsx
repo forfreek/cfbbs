@@ -1,6 +1,7 @@
 import { data, Form, redirect, useActionData } from "react-router";
 
 import type { Route } from "./+types/posts.$postId.edit";
+import { MarkdownEditor } from "@/components/markdown-editor";
 import {
   canViewForumBoard,
   canViewPrivateForumContent,
@@ -118,17 +119,7 @@ export default function EditPost({ loaderData }: Route.ComponentProps) {
             />
           </label>
         ) : null}
-        <label className="grid gap-1 text-sm font-medium">
-          内容（Markdown）
-          <textarea
-            required
-            name="markdown"
-            defaultValue={post.markdown}
-            maxLength={20_000}
-            rows={12}
-            className="rounded-md border px-3 py-2 font-normal"
-          />
-        </label>
+        <MarkdownEditor defaultValue={post.markdown} rows={12} />
         <div className="flex gap-4">
           <button className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
             保存修改

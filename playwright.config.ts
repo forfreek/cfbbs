@@ -4,7 +4,8 @@ export default defineConfig({
   testDir: "./tests/e2e",
   workers: 1,
   webServer: {
-    command: "pnpm dev --host 127.0.0.1",
+    command: "bash tests/e2e/start-web-server.sh",
+    timeout: 120_000,
     url: "http://127.0.0.1:5173",
     reuseExistingServer: !process.env.CI,
   },

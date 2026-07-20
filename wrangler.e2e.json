@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "cfbbs-e2e",
+  "main": "./workers/app.ts",
+  "compatibility_date": "2025-10-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cfbbs-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "FEDIFY_KV",
+      "id": "00000000000000000000000000000000"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "FEDERATION_QUEUE",
+        "queue": "cfbbs-local-federation"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "cfbbs-local-federation",
+        "max_retries": 5,
+        "dead_letter_queue": "cfbbs-local-federation-dlq"
+      }
+    ]
+  },
+  "vars": {
+    "APP_ORIGIN": "http://127.0.0.1:5173",
+    "BETTER_AUTH_SECRET": "playwright-test-better-auth-secret",
+    "FEDERATION_KEY_ENCRYPTION_SECRET": "playwright-test-federation-key-secret",
+    "VALUE_FROM_CLOUDFLARE": "Hello from the CFBBS e2e environment"
+  }
+}

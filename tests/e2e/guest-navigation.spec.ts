@@ -34,6 +34,28 @@ test("provides a keyboard-visible shortcut to the main forum content", async ({
   await expect(skipLink).toBeVisible();
 });
 
+test("keeps primary navigation available while reducing secondary content on mobile", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const primaryBoardsLink = page.getByRole("link", { name: "Boards" });
+  const federationSummary = page.getByRole("heading", {
+    name: "关于联邦身份",
+  });
+  if (testInfo.project.name === "mobile") {
+    await expect(primaryBoardsLink).toBeHidden();
+    await expect(federationSummary).toBeHidden();
+  } else {
+    await expect(primaryBoardsLink).toBeVisible();
+    await expect(federationSummary).toBeVisible();
+  }
+  await expect(page.getByRole("heading", { name: "全部主题" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Create account" }).first(),
+  ).toBeVisible();
+});
+
 test("requires a local session before opening the following feed", async ({
   page,
 }) => {

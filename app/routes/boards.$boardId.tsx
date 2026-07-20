@@ -1,6 +1,7 @@
 import { Form, Link, data, redirect, useActionData } from "react-router";
 
 import type { Route } from "./+types/boards.$boardId";
+import { MarkdownEditor } from "@/components/markdown-editor";
 import {
   canCreateForumThread,
   canViewForumBoard,
@@ -140,16 +141,7 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
                 className="rounded-md border px-3 py-2 font-normal"
               />
             </label>
-            <label className="grid gap-1 text-sm font-medium">
-              内容（Markdown）
-              <textarea
-                required
-                name="markdown"
-                maxLength={20_000}
-                rows={8}
-                className="rounded-md border px-3 py-2 font-normal"
-              />
-            </label>
+            <MarkdownEditor />
             <button className="w-fit rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
               发布主题
             </button>

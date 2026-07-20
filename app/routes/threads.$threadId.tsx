@@ -1,6 +1,7 @@
 import { Form, Link, data, redirect, useActionData } from "react-router";
 
 import type { Route } from "./+types/threads.$threadId";
+import { MarkdownEditor } from "@/components/markdown-editor";
 import {
   canReplyInForumBoard,
   canViewForumBoard,
@@ -316,16 +317,7 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
             </p>
           ) : null}
           <Form method="post" className="mt-4 grid gap-4">
-            <label className="grid gap-1 text-sm font-medium">
-              内容（Markdown）
-              <textarea
-                required
-                name="markdown"
-                maxLength={20_000}
-                rows={7}
-                className="rounded-md border px-3 py-2 font-normal"
-              />
-            </label>
+            <MarkdownEditor label="内容（Markdown）" rows={7} />
             <button className="w-fit rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
               发表回复
             </button>

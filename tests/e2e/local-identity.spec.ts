@@ -34,6 +34,13 @@ test("registers a local account, keeps its handle immutable, and clears its sess
   await page.locator('input[name="title"]').fill(threadTitle);
   await page
     .locator('textarea[name="markdown"]')
+    .fill("<script>alert(1)</script>\n\n**Safe preview**");
+  await page.getByRole("button", { name: "预览 Markdown" }).click();
+  const preview = page.getByRole("region", { name: "Markdown 预览" });
+  await expect(preview.locator("strong")).toHaveText("Safe preview");
+  await expect(preview.locator("script")).toHaveCount(0);
+  await page
+    .locator('textarea[name="markdown"]')
     .fill("A public post from a newly registered account.");
   await page.getByRole("button", { name: "发布主题" }).click();
   await expect(page).toHaveURL(/\/threads\//);

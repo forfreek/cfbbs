@@ -32,5 +32,6 @@ export default [
   route(".well-known/nodeinfo", "routes/nodeinfo.well-known.ts"),
   route("nodeinfo/2.1", "routes/nodeinfo.ts"),
   route("api/auth/*", "routes/api.auth.ts"),
+  route("api/markdown-preview", "routes/api.markdown-preview.ts"),
   route("health", "routes/health.ts"),
 ] satisfies RouteConfig;
