@@ -7,6 +7,8 @@ have been approved.
 
 It is pinned to Misskey `2026.6.0`, PostgreSQL `16.9-alpine`, and Redis
 `7.4.2-alpine`. The service memory limits add up to 2560 MiB (2.5 GiB).
+It binds to `127.0.0.1:3100` by default so it cannot conflict with another
+host service using port 3000; the dedicated Nginx vhost proxies to that port.
 
 ## Prepare configuration
 
@@ -19,8 +21,8 @@ chmod 600 .env config/default.yml
 ```
 
 Replace the password and instance ID in both files. Set `url` in
-`config/default.yml` to the final `https://misskey-test.<base-domain>/` URL
-before starting the service. The configuration files are ignored by Git.
+`config/default.yml` to `https://misskey-test.s.lukelzlz.top/` before starting
+the service. The configuration files are ignored by Git.
 
 Validate interpolation and Compose syntax without pulling or starting images:
 

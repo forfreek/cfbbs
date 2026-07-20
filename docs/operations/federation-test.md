@@ -1,16 +1,18 @@
 # Federation test environment runbook
 
-This runbook describes the future, disposable interoperability environment.
-No command in this document has been run for CFBBS yet. The repository has no
-Cloudflare remote resources, deployed Worker, Docker containers, or Nginx
-changes created by this plan.
+This runbook describes the disposable interoperability environment. No
+Cloudflare remote resources, deployed Worker, or Docker containers have been
+created for CFBBS yet. The host has one dedicated exact-match Nginx vhost at
+`/www/server/panel/vhost/nginx/misskey-test.s.lukelzlz.top.conf`; it proxies
+only `misskey-test.s.lukelzlz.top` to loopback `127.0.0.1:3100` and does not
+modify the existing 宝塔 wildcard site.
 
 ## Required approval and inputs
 
 Before beginning the remote phase, obtain all of the following:
 
-- a base domain and explicit names for `bbs-test.<base-domain>` and
-  `misskey-test.<base-domain>`;
+- the test hostnames `cfbbs-test.s.lukelzlz.top` and
+  `misskey-test.s.lukelzlz.top`;
 - authorization to authenticate the intended Cloudflare account and create
   its test-only D1, KV, Queue, and DLQ resources;
 - authorization to pull and start the Misskey test stack; and
@@ -47,7 +49,12 @@ pnpm exec wrangler deploy --env test
 
 Use the Compose instructions in
 [`infra/misskey/README.md`](../../infra/misskey/README.md) only after its URL
-is served by the approved HTTPS virtual host.
+is served by the approved HTTPS virtual host. The test stack binds Misskey to
+`127.0.0.1:3100`, so its vhost must proxy only that loopback address.
+
+Before the stack is started the vhost correctly returns `502`; that confirms
+the exact hostname is selected instead of the existing wildcard site. Verify
+that it returns Misskey's `/api/meta` response after the stack becomes healthy.
 
 ## Interoperability matrix
 

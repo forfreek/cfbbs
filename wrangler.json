@@ -80,7 +80,7 @@
         "crons": ["*/5 * * * *", "0 3 * * *"]
       },
       "vars": {
-        "APP_ORIGIN": "https://bbs-test.example.invalid",
+        "APP_ORIGIN": "https://cfbbs-test.s.lukelzlz.top",
         "VALUE_FROM_CLOUDFLARE": "Hello from the CFBBS test environment"
       }
     }

@@ -1,6 +1,6 @@
 # Copy this file to config/default.yml and replace every CHANGE_ME value.
 # The public URL must use the actual, HTTPS-enabled Misskey test hostname.
-url: https://misskey-test.example.invalid/
+url: https://misskey-test.s.lukelzlz.top/
 
 db:
   host: db

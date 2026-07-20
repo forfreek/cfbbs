@@ -255,11 +255,11 @@ Invariants:
 
 **Files:** `infra/misskey/compose.yml`, `infra/misskey/.env.example`, `infra/misskey/README.md`, `docs/operations/federation-test.md`
 
-- [ ] Obtain the actual base domain and use `bbs-test.<base-domain>` and `misskey-test.<base-domain>` unless the user supplies different complete names.
+- [x] Use `cfbbs-test.s.lukelzlz.top` and `misskey-test.s.lukelzlz.top` as the explicit test hostnames.
 - [ ] Authenticate Wrangler, create the test D1/KV/Queue/DLQ resources, store their IDs only in Wrangler configuration, and upload secrets with `wrangler secret put`.
 - [ ] Deploy the `test` Worker and apply test D1 migrations before enabling public federation.
 - [x] Create an on-demand Compose stack pinned to Misskey 2026.6.0 with independent PostgreSQL and Redis services, persistent test volumes, health checks, and an approximate aggregate 2.5 GiB memory ceiling.
-- [ ] Configure the existing Nginx to proxy the Misskey hostname over HTTPS without modifying unrelated virtual hosts.
+- [x] Configure one exact-match HTTPS Nginx vhost for Misskey without modifying unrelated virtual hosts.
 - [ ] Verify WebFinger and Actor discovery in both directions before creating test follows.
 - [ ] Exercise bidirectional follow/unfollow, BBS topic delivery, Misskey reply, BBS reply, bidirectional likes, update, delete, instance block, and delivery recovery after stopping Misskey.
 - [ ] Verify private-board objects return no ActivityPub representation and never appear in Worker delivery logs or Misskey.
@@ -298,7 +298,7 @@ Expected result: Wrangler is authenticated to the intended account, test resourc
 ## Assumptions and External Prerequisites
 
 - The test deployment remains separate from any future production deployment.
-- The user will provide the actual test domain before Task 12.
+- The user supplied `cfbbs-test.s.lukelzlz.top` and `misskey-test.s.lukelzlz.top` for Task 12.
 - The Cloudflare account supports Workers, D1, KV, and Queues.
 - The Cloudflare scaffold's supported React Router version is accepted and pinned by `pnpm-lock.yaml`; do not force an unsupported React Router major.
 - Misskey runs only on demand because this server already hosts other services.

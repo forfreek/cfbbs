@@ -10,7 +10,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "${MISSKEY_BIND_ADDRESS:-127.0.0.1}:${MISSKEY_PORT:-3000}:3000"
+      - "${MISSKEY_BIND_ADDRESS:-127.0.0.1}:${MISSKEY_PORT:-3100}:3000"
     volumes:
       - misskey-files:/misskey/files
       - ./config:/misskey/.config:ro
