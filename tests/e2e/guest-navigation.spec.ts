@@ -23,6 +23,17 @@ test("renders the public home page and opens registration without runtime errors
   expect(errors).toEqual([]);
 });
 
+test("provides a keyboard-visible shortcut to the main forum content", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.keyboard.press("Tab");
+
+  const skipLink = page.locator('a[href="#main-content"]');
+  await expect(skipLink).toBeFocused();
+  await expect(skipLink).toBeVisible();
+});
+
 test("requires a local session before opening the following feed", async ({
   page,
 }) => {

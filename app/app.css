@@ -136,6 +136,9 @@ body {
   * {
     @apply border-border outline-ring/50;
   }
+  :focus-visible {
+    @apply outline-ring outline-2 outline-offset-2;
+  }
   body {
     @apply bg-background text-foreground;
   }
