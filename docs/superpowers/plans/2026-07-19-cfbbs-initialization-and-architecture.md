@@ -231,13 +231,13 @@ Invariants:
 **Files:** `app/modules/federation/listeners/*`, `app/modules/federation/delivery/*`, `app/modules/jobs/federation-outbox.server.ts`, `app/worker.ts`, `tests/integration/federation/*`
 
 - [x] Support `Follow`, `Accept`, `Reject`, `Undo`, `Create`, `Update`, `Delete`, and `Like`/`Undo Like`.
-- [ ] Reject unsigned or replayed activities, deduplicate Activity IDs, verify Actor/Object ownership, and sanitize remote HTML.
+- [x] Reject unsigned or replayed activities, deduplicate Activity IDs, verify Actor/Object ownership, and sanitize remote HTML.
 - [x] Restrict remote fetches to HTTPS with bounded redirects, response size, timeout, and acceptable ActivityStreams content types.
-- [ ] Process Fedify Queue messages in the Worker queue handler and route permanent failures to the DLQ.
-- [ ] Dispatch D1 outbox events idempotently; Cron retries pending rows and marks terminal failures without changing local post success.
-- [ ] Place remote replies into local threads and other followed remote Notes into the following feed.
-- [ ] Ignore unsupported boosts and non-public content without displaying or notifying them.
-- [ ] Test follow handshakes, replies, likes, edits, deletes, duplicate delivery, queue retry, remote outage, and unsupported visibility.
+- [x] Process Fedify Queue messages in the Worker queue handler and route permanent failures to the DLQ.
+- [x] Dispatch D1 outbox events idempotently; Cron retries pending rows and marks terminal failures without changing local post success.
+- [x] Place remote replies into local threads and other followed remote Notes into the following feed.
+- [x] Ignore unsupported boosts and non-public content without displaying or notifying them.
+- [x] Test follow handshakes, replies, likes, edits, deletes, duplicate delivery, queue retry, remote outage, and unsupported visibility.
 - [ ] Commit with `feat: add bidirectional ActivityPub delivery`.
 
 ### Task 11: Implement federation moderation and retention
@@ -248,7 +248,7 @@ Invariants:
 - [x] Allow valid remote replies to display immediately while quarantining abnormal rates or repeated failures.
 - [x] Prevent blocked instances and Actors from producing visible replies, notifications, or new delivery attempts.
 - [x] Purge remote objects older than 90 days unless referenced locally, active, or retained for moderation evidence.
-- [ ] Test block precedence, user-specific mute behavior, report access, audit immutability, retention exceptions, and cleanup idempotency.
+- [x] Test block precedence, user-specific mute behavior, report access, audit immutability, retention exceptions, and cleanup idempotency.
 - [ ] Commit with `feat: add federation safety controls`.
 
 ### Task 12: Provision the test Worker and Misskey interoperability stack
