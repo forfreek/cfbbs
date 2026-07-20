@@ -62,3 +62,16 @@ test("requires a local session before opening protected administration and editi
     await expect(page).toHaveURL(/\/auth\/login$/);
   }
 });
+
+test("does not disclose a private board to unauthenticated visitors", async ({
+  page,
+}) => {
+  const response = await page.goto(
+    "/boards/00000000-0000-0000-0000-000000000102",
+    { waitUntil: "domcontentloaded" },
+  );
+
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
+  await expect(page.getByText("Staff")).toHaveCount(0);
+});

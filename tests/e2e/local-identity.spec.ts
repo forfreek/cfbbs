@@ -22,6 +22,8 @@ test("registers a local account, keeps its handle immutable, and clears its sess
   await page.getByRole("button", { name: "Create account" }).click();
 
   await expect(page).toHaveURL(new RegExp(`/users/${handle}$`));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("vite-error-overlay")).toHaveCount(0);
   await expect(page.getByText(`@${handle}`)).toBeVisible();
 
   const threadTitle = `First topic from ${handle}`;
