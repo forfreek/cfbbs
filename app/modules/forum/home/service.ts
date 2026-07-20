@@ -3,6 +3,7 @@ export type HomeBoard = {
   parentId: string | null;
   slug: string;
   title: string;
+  mode: "container" | "posting" | "read_only";
 };
 
 export type HomeTopic = {
@@ -15,6 +16,9 @@ export type HomeTopic = {
   activityAt: string;
 };
 
+export const homeSorts = ["latest", "active", "unreplied"] as const;
+export type HomeSort = (typeof homeSorts)[number];
+
 type HomeDatabase = Pick<D1Database, "prepare">;
 
 const publicBoardQuery = `
@@ -22,7 +26,8 @@ const publicBoardQuery = `
     boards.id,
     boards.parent_id AS parentId,
     boards.slug,
-    boards.title
+    boards.title,
+    boards.mode
   FROM boards
   WHERE boards.visibility = 'public'
     AND NOT EXISTS (
@@ -72,14 +77,41 @@ const publicTopicQuery = `
       WHERE path.descendant_id = boards.id
         AND ancestor.visibility != 'public'
     )
-  ORDER BY threads.is_pinned DESC, activityAt DESC, threads.id DESC
-  LIMIT 50
 `;
 
-export async function loadPublicHome(database: HomeDatabase) {
+function publicTopicQueryFor(sort: HomeSort) {
+  const sortClause =
+    sort === "active"
+      ? "ORDER BY threads.is_pinned DESC, replyCount DESC, activityAt DESC, threads.id DESC"
+      : "ORDER BY threads.is_pinned DESC, activityAt DESC, threads.id DESC";
+  const unrepliedClause =
+    sort === "unreplied"
+      ? `
+  AND NOT EXISTS (
+    SELECT 1
+    FROM posts AS reply
+    WHERE reply.thread_id = threads.id
+      AND reply.id != threads.first_post_id
+      AND reply.visibility = 'public'
+      AND reply.state = 'published'
+  )`
+      : "";
+  return `${publicTopicQuery}${unrepliedClause}
+  ${sortClause}
+  LIMIT 50`;
+}
+
+export function parseHomeSort(value: string | null): HomeSort {
+  return homeSorts.includes(value as HomeSort) ? (value as HomeSort) : "latest";
+}
+
+export async function loadPublicHome(
+  database: HomeDatabase,
+  sort: HomeSort = "latest",
+) {
   const [boardResult, topicResult] = await Promise.all([
     database.prepare(publicBoardQuery).all<HomeBoard>(),
-    database.prepare(publicTopicQuery).all<HomeTopic>(),
+    database.prepare(publicTopicQueryFor(sort)).all<HomeTopic>(),
   ]);
 
   return {
@@ -112,4 +144,9 @@ export function boardGroups(boards: readonly HomeBoard[]) {
     .map((board) => ({ board, items: descendants(board.id, 0) }));
 }
 
-export const publicHomeQueries = { publicBoardQuery, publicTopicQuery };
+export const publicHomeQueries = {
+  publicBoardQuery,
+  publicTopicQuery: publicTopicQueryFor("latest"),
+  activeTopicQuery: publicTopicQueryFor("active"),
+  unrepliedTopicQuery: publicTopicQueryFor("unreplied"),
+};

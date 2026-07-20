@@ -26,6 +26,19 @@ test("registers a local account, keeps its handle immutable, and clears its sess
   await expect(page.locator("vite-error-overlay")).toHaveCount(0);
   await expect(page.getByText(`@${handle}`)).toBeVisible();
 
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("link", { name: `@${handle}` })).toBeVisible();
+  await page.getByRole("link", { name: "活跃" }).click();
+  await expect(page).toHaveURL(/\?sort=active$/);
+  await expect(page.getByRole("link", { name: "活跃" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await page.getByRole("link", { name: "发布主题" }).click();
+  await expect(page).toHaveURL(
+    /\/boards\/00000000-0000-0000-0000-000000000101#create-thread$/,
+  );
+
   const threadTitle = `First topic from ${handle}`;
   await page.goto("/boards/00000000-0000-0000-0000-000000000101", {
     waitUntil: "domcontentloaded",

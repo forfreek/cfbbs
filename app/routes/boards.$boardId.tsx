@@ -124,7 +124,7 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
       ) : null}
 
       {canCreate ? (
-        <section className="mt-10 rounded-lg border p-5">
+        <section id="create-thread" className="mt-10 rounded-lg border p-5">
           <h2 className="font-semibold">发布主题</h2>
           {actionData?.error ? (
             <p role="alert" className="mt-3 text-sm text-red-700">

@@ -6,14 +6,16 @@ import HomeIcon from "lucide-react/dist/esm/icons/home.mjs";
 import PenLine from "lucide-react/dist/esm/icons/pen-line.mjs";
 import Search from "lucide-react/dist/esm/icons/search.mjs";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles.mjs";
-import { Link } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/home";
 import {
   boardGroups,
   loadPublicHome,
+  parseHomeSort,
   type HomeBoard,
 } from "@/modules/forum/home/service";
+import { getSession } from "@/modules/identity/auth.server";
 
 function BoardGroup({
   board,
@@ -53,8 +55,14 @@ export function meta() {
   ];
 }
 
-export async function loader({ context }: Route.LoaderArgs) {
-  return loadPublicHome(context.cloudflare.env.DB);
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const requestUrl = new URL(request.url);
+  const sort = parseHomeSort(requestUrl.searchParams.get("sort"));
+  const [home, session] = await Promise.all([
+    loadPublicHome(context.cloudflare.env.DB, sort),
+    getSession(request, context.cloudflare.env),
+  ]);
+  return { ...home, session, sort };
 }
 
 function formatActivityTime(value: string) {
@@ -64,6 +72,20 @@ function formatActivityTime(value: string) {
 export default function Home({ loaderData }: Route.ComponentProps) {
   const groups = boardGroups(loaderData.boards);
   const activity = loaderData.topics.slice(0, 5);
+  const session = loaderData.session;
+  const postingBoard = loaderData.boards.find(
+    (board) => board.mode === "posting",
+  );
+  const sortOptions = [
+    { value: "latest", label: "最新" },
+    { value: "active", label: "活跃" },
+    { value: "unreplied", label: "未回复" },
+  ] as const;
+  const publishTarget = session
+    ? postingBoard
+      ? `/boards/${postingBoard.id}#create-thread`
+      : "/"
+    : "/auth/register";
 
   return (
     <main id="main-content" className="min-h-screen bg-white text-slate-900">
@@ -103,15 +125,36 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </Link>
           </nav>
           <div className="ml-auto flex items-center gap-4 text-sm">
-            <Link className="hidden sm:block" to="/auth/login">
-              Sign in
-            </Link>
-            <Link
-              className="rounded-md bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700"
-              to="/auth/register"
-            >
-              Create account
-            </Link>
+            {session ? (
+              <>
+                <Link className="hidden sm:block" to="/notifications">
+                  通知
+                </Link>
+                <Link
+                  className="hidden sm:block"
+                  to={`/users/${session.user.username}`}
+                >
+                  @{session.user.username}
+                </Link>
+                <Form method="post" action="/auth/logout">
+                  <button className="rounded-md border px-3 py-1.5 hover:bg-slate-50">
+                    退出
+                  </button>
+                </Form>
+              </>
+            ) : (
+              <>
+                <Link className="hidden sm:block" to="/auth/login">
+                  Sign in
+                </Link>
+                <Link
+                  className="rounded-md bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700"
+                  to="/auth/register"
+                >
+                  Create account
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -128,14 +171,14 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </Link>
             <Link
               className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-600 hover:bg-slate-50"
-              to="/"
+              to="/following"
             >
               <CircleDot className="size-4" />
               我的关注
             </Link>
             <Link
               className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-600 hover:bg-slate-50"
-              to="/"
+              to="/?sort=active"
             >
               <Sparkles className="size-4" />
               热门主题
@@ -156,19 +199,36 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <h1 className="text-2xl font-semibold tracking-tight">全部主题</h1>
             <Link
               className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
-              to="/auth/register"
+              to={publishTarget}
             >
               <PenLine className="size-4" />
               发布主题
             </Link>
           </div>
-          <div className="mt-7 flex gap-6 border-b text-sm">
-            <button className="border-b-2 border-blue-600 pb-3 font-medium text-blue-700">
-              最新
-            </button>
-            <button className="pb-3 text-slate-500">活跃</button>
-            <button className="pb-3 text-slate-500">未回复</button>
-          </div>
+          <nav
+            className="mt-7 flex gap-6 border-b text-sm"
+            aria-label="主题排序"
+          >
+            {sortOptions.map((option) => {
+              const active = loaderData.sort === option.value;
+              return (
+                <Link
+                  aria-current={active ? "page" : undefined}
+                  className={
+                    active
+                      ? "border-b-2 border-blue-600 pb-3 font-medium text-blue-700"
+                      : "pb-3 text-slate-500 hover:text-slate-900"
+                  }
+                  key={option.value}
+                  to={
+                    option.value === "latest" ? "/" : `/?sort=${option.value}`
+                  }
+                >
+                  {option.label}
+                </Link>
+              );
+            })}
+          </nav>
           <div className="grid grid-cols-[minmax(0,1fr)_80px_44px_80px] gap-3 border-b py-3 text-xs font-medium text-slate-500">
             <span>主题</span>
             <span>作者</span>
@@ -205,10 +265,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </p>
             ) : null}
           </div>
-          {loaderData.topics.length > 0 ? (
-            <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-md border py-2.5 text-sm text-slate-500 hover:bg-slate-50">
-              加载更多主题 <ChevronDown className="size-4" />
-            </button>
+          {loaderData.topics.length >= 50 ? (
+            <p className="mt-5 text-center text-sm text-slate-500">
+              显示最近 50 个主题。
+            </p>
           ) : null}
         </section>
         <aside className="hidden space-y-5 border-l bg-slate-50/30 px-5 py-8 xl:block">
@@ -273,7 +333,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </ul>
             <Link
               className="mt-5 flex items-center gap-1 text-sm font-medium text-blue-700"
-              to="/"
+              to="/?sort=active"
             >
               查看全部活动 <ChevronRight className="size-4" />
             </Link>
