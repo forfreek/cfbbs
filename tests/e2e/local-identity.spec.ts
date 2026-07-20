@@ -24,6 +24,19 @@ test("registers a local account, keeps its handle immutable, and clears its sess
   await expect(page).toHaveURL(new RegExp(`/users/${handle}$`));
   await expect(page.getByText(`@${handle}`)).toBeVisible();
 
+  const threadTitle = `First topic from ${handle}`;
+  await page.goto("/boards/00000000-0000-0000-0000-000000000101", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
+  await page.locator('input[name="title"]').fill(threadTitle);
+  await page
+    .locator('textarea[name="markdown"]')
+    .fill("A public post from a newly registered account.");
+  await page.getByRole("button", { name: "发布主题" }).click();
+  await expect(page).toHaveURL(/\/threads\//);
+  await expect(page.getByRole("heading", { name: threadTitle })).toBeVisible();
+
   const handleUpdate = await page.evaluate(async () => {
     const response = await fetch("/api/auth/update-user", {
       method: "POST",
