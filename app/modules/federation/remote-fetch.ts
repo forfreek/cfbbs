@@ -11,6 +11,13 @@ type Fetcher = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+export type BoundedRemoteJsonDocument = {
+  document: unknown;
+  documentUrl: string;
+};
+
+type BoundedRemoteJsonFetchOptions = { signal?: AbortSignal };
+
 function isRedirect(response: Response) {
   return [301, 302, 303, 307, 308].includes(response.status);
 }
@@ -19,6 +26,13 @@ export function isActivityStreamsContentType(value: string | null) {
   if (!value) return false;
   const type = value.split(";", 1)[0]?.trim().toLowerCase();
   return type === "application/activity+json" || type === "application/ld+json";
+}
+
+export function isJrdContentType(value: string | null) {
+  if (!value) return false;
+  return (
+    value.split(";", 1)[0]?.trim().toLowerCase() === "application/jrd+json"
+  );
 }
 
 function requestSignal(signal: AbortSignal | undefined) {
@@ -75,9 +89,14 @@ async function parseBoundedJson(response: Response) {
   }
 }
 
-export function createBoundedRemoteDocumentLoader(
+export function createBoundedRemoteJsonFetcher(
+  accept: string,
+  acceptsContentType: (value: string | null) => boolean,
   fetcher: Fetcher = fetch,
-): DocumentLoader {
+): (
+  value: string | URL,
+  options?: BoundedRemoteJsonFetchOptions,
+) => Promise<BoundedRemoteJsonDocument> {
   return async (value, options) => {
     let url: URL;
     try {
@@ -98,8 +117,7 @@ export function createBoundedRemoteDocumentLoader(
       try {
         const response = await fetcher(url, {
           headers: {
-            accept:
-              'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
+            accept,
           },
           redirect: "manual",
           signal: request.signal,
@@ -117,18 +135,11 @@ export function createBoundedRemoteDocumentLoader(
         if (!response.ok) {
           throw new Error(`Remote document returned HTTP ${response.status}.`);
         }
-        if (
-          !isActivityStreamsContentType(response.headers.get("content-type"))
-        ) {
+        if (!acceptsContentType(response.headers.get("content-type"))) {
           throw new Error("Remote document has an unsupported content type.");
         }
         const document = await parseBoundedJson(response);
-        const remoteDocument: RemoteDocument = {
-          contextUrl: null,
-          document,
-          documentUrl: url.href,
-        };
-        return remoteDocument;
+        return { document, documentUrl: url.href };
       } catch (error) {
         if (request.signal.aborted) {
           throw new Error("Remote document fetch timed out or was cancelled.", {
@@ -141,5 +152,23 @@ export function createBoundedRemoteDocumentLoader(
       }
     }
     throw new Error("Remote document exceeded the redirect limit.");
+  };
+}
+
+export function createBoundedRemoteDocumentLoader(
+  fetcher: Fetcher = fetch,
+): DocumentLoader {
+  const fetchJson = createBoundedRemoteJsonFetcher(
+    'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
+    isActivityStreamsContentType,
+    fetcher,
+  );
+  return async (value, options) => {
+    const document = await fetchJson(value, { signal: options?.signal });
+    const remoteDocument: RemoteDocument = {
+      contextUrl: null,
+      ...document,
+    };
+    return remoteDocument;
   };
 }

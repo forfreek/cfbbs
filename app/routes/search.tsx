@@ -2,12 +2,30 @@ import SearchIcon from "lucide-react/dist/esm/icons/search.mjs";
 import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/search";
+import {
+  lookupRemoteResource,
+  parseRemoteLookupTarget,
+} from "@/modules/federation/remote-lookup";
 import { searchLocalPosts } from "@/modules/forum/search/service";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const query = new URL(request.url).searchParams.get("q") ?? "";
+  const remoteTarget = parseRemoteLookupTarget(query);
+  if (remoteTarget) {
+    try {
+      const remoteLookup = await lookupRemoteResource(remoteTarget);
+      return { query, results: [], remoteLookup, remoteLookupError: null };
+    } catch {
+      return {
+        query,
+        results: [],
+        remoteLookup: null,
+        remoteLookupError: "无法获取这个远端 ActivityPub 资源。",
+      };
+    }
+  }
   const results = await searchLocalPosts(context.cloudflare.env.DB, query);
-  return { query, results };
+  return { query, results, remoteLookup: null, remoteLookupError: null };
 }
 
 export default function SearchPage({ loaderData }: Route.ComponentProps) {
@@ -16,7 +34,9 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
     <main className="mx-auto max-w-3xl px-6 py-12">
       <div className="flex items-baseline justify-between gap-4">
         <div>
-          <p className="text-sm text-slate-500">仅检索公开的本地主题与回复</p>
+          <p className="text-sm text-slate-500">
+            检索公开的本地内容，或查询完整的远端 handle / HTTPS URL
+          </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">搜索</h1>
         </div>
         <Link className="text-sm text-blue-700 hover:underline" to="/">
@@ -40,7 +60,30 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
           搜索
         </button>
       </Form>
-      {searched ? (
+      {loaderData.remoteLookup ? (
+        <section className="mt-8 rounded-lg border p-5" aria-live="polite">
+          <p className="text-sm text-slate-500">远端 ActivityPub 资源</p>
+          <h2 className="mt-1 text-lg font-semibold">
+            {loaderData.remoteLookup.name}
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            {loaderData.remoteLookup.kind === "actor" ? "账号" : "对象"} ·{" "}
+            {loaderData.remoteLookup.type}
+          </p>
+          <a
+            className="mt-3 inline-block text-sm text-blue-700 hover:underline"
+            href={loaderData.remoteLookup.url}
+            rel="noreferrer noopener"
+            target="_blank"
+          >
+            在远端打开
+          </a>
+        </section>
+      ) : loaderData.remoteLookupError ? (
+        <p role="alert" className="mt-8 text-sm text-amber-700">
+          {loaderData.remoteLookupError}
+        </p>
+      ) : searched ? (
         <section className="mt-8" aria-live="polite">
           <h2 className="text-sm text-slate-500">
             {loaderData.results.length > 0

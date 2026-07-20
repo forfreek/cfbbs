@@ -205,7 +205,7 @@ Invariants:
 
 - [ ] Build the modern forum home page, hierarchical board navigation, board pages, topic pages, editor preview, profiles, following feed, notification center, and administration shell.
 - [ ] Keep important desktop metadata while reducing secondary detail on narrow screens.
-- [ ] Implement local FTS search and remote lookup only by complete handle or URL.
+- [x] Implement local FTS search and remote lookup only by complete handle or URL.
 - [ ] Add accessible keyboard navigation, visible focus, semantic landmarks, error summaries, and empty/loading states.
 - [ ] Test guest browsing, registration, public posting, private-board access, moderator workflow, search, notifications, and mobile layout with Playwright.
 - [ ] Commit with `feat: complete local BBS experience`.

@@ -9,5 +9,8 @@ describe("remote federation URLs", () => {
     expect(isSafeRemoteUrl("https://192.168.1.2/")).toBe(false);
     expect(isSafeRemoteUrl("https://[::1]/")).toBe(false);
     expect(isSafeRemoteUrl("https://[fd00::1]/")).toBe(false);
+    expect(
+      isSafeRemoteUrl("https://username:password@social.example.test/actor"),
+    ).toBe(false);
   });
 });

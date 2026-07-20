@@ -8,6 +8,8 @@ export function isSafeRemoteUrl(value: string) {
     const host = url.hostname.replace(/^\[|\]$/g, "");
     return (
       url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
       !privateHost.test(host) &&
       !privateIpv6.test(host)
     );
