@@ -172,7 +172,7 @@ Invariants:
 - [x] Implement register, login, logout, session loading, local profile editing, and public profile rendering.
 - [x] Keep display name, biography, and avatar URL mutable without changing Actor identity.
 - [x] Test duplicate/case-folded usernames, reserved names, invalid sessions, logout, and handle immutability.
-- [ ] Commit with `feat: add local identity and profiles`.
+- [x] Commit the verified local identity and profile implementation.
 
 ### Task 6: Implement hierarchical boards and RBAC
 
@@ -197,18 +197,18 @@ Invariants:
 - [x] Ensure notification payloads never expose a private board title, author, or excerpt to an unauthorized viewer.
 - [x] Write public-post changes and federation outbox events atomically; do not create federation events for private boards.
 - [x] Test locked threads, post ownership, moderator overrides, duplicate likes, XSS payloads, private-board leakage, and D1 outbox recovery.
-- [ ] Commit with `feat: add local forum participation`.
+- [x] Commit the verified local forum participation implementation.
 
 ### Task 8: Implement search, feeds, administration, and responsive UI
 
 **Files:** `app/routes/_index.tsx`, `app/routes/search.tsx`, `app/routes/following.tsx`, `app/routes/notifications.tsx`, `app/routes/admin.*`, `app/components/*`, `tests/e2e/*`
 
-- [ ] Build the modern forum home page, hierarchical board navigation, board pages, topic pages, editor preview, profiles, following feed, notification center, and administration shell.
-- [ ] Keep important desktop metadata while reducing secondary detail on narrow screens.
+- [x] Build the modern forum home page, hierarchical board navigation, board pages, topic pages, editor preview, profiles, following feed, notification center, and administration shell.
+- [x] Keep important desktop metadata while reducing secondary detail on narrow screens.
 - [x] Implement local FTS search and remote lookup only by complete handle or URL.
-- [ ] Add accessible keyboard navigation, visible focus, semantic landmarks, error summaries, and empty/loading states.
-- [ ] Test guest browsing, registration, public posting, private-board access, moderator workflow, search, notifications, and mobile layout with Playwright.
-- [ ] Commit with `feat: complete local BBS experience`.
+- [x] Add accessible keyboard navigation, visible focus, semantic landmarks, error summaries, and empty/loading states.
+- [x] Test guest browsing, registration, public posting, private-board access, moderator workflow, search, notifications, and mobile layout with Playwright.
+- [x] Commit the verified local BBS experience implementation.
 
 **Milestone 2 acceptance:** A seeded local installation supports registration, hierarchical boards, custom RBAC, public/private topics, Markdown replies, likes, notifications, local search, and moderation. Every privacy test passes, and no ActivityPub delivery is required for local correctness.
 
@@ -218,13 +218,13 @@ Invariants:
 
 **Files:** `app/modules/federation/federation.server.ts`, `app/modules/federation/dispatchers/*`, `app/modules/federation/vocabulary/*`, `app/routes/.well-known.*`, `tests/integration/federation/*`
 
-- [ ] Construct Fedify per Worker request with the official Workers KV and Queue adapters.
-- [ ] Implement WebFinger, NodeInfo, Actor, Object, inbox, shared inbox, outbox, followers, and following dispatchers.
-- [ ] Map each local user to `Person` and each public local topic/reply to `Note` with stable IDs.
-- [ ] Use content negotiation so ActivityStreams clients receive JSON while browsers receive the matching HTML page.
-- [ ] Generate one signing key per local Actor and encrypt the private material using the Worker secret before D1 storage.
-- [ ] Test stable IDs, WebFinger normalization, HTML/JSON negotiation, Actor serialization, public addressing, and private-board nonexistence.
-- [ ] Commit with `feat: expose ActivityPub identities and objects`.
+- [x] Construct Fedify per Worker request with the official Workers KV and Queue adapters.
+- [x] Implement WebFinger, NodeInfo, Actor, Object, inbox, shared inbox, outbox, followers, and following dispatchers.
+- [x] Map each local user to `Person` and each public local topic/reply to `Note` with stable IDs.
+- [x] Use content negotiation so ActivityStreams clients receive JSON while browsers receive the matching HTML page.
+- [x] Generate one signing key per local Actor and encrypt the private material using the Worker secret before D1 storage.
+- [x] Test stable IDs, WebFinger normalization, HTML/JSON negotiation, Actor serialization, public addressing, and private-board nonexistence.
+- [x] Commit the verified ActivityPub identity and object implementation.
 
 ### Task 10: Implement inbound and outbound federation
 
@@ -238,7 +238,7 @@ Invariants:
 - [x] Place remote replies into local threads and other followed remote Notes into the following feed.
 - [x] Ignore unsupported boosts and non-public content without displaying or notifying them.
 - [x] Test follow handshakes, replies, likes, edits, deletes, duplicate delivery, queue retry, remote outage, and unsupported visibility.
-- [ ] Commit with `feat: add bidirectional ActivityPub delivery`.
+- [x] Commit the verified bidirectional ActivityPub delivery implementation.
 
 ### Task 11: Implement federation moderation and retention
 
@@ -249,7 +249,7 @@ Invariants:
 - [x] Prevent blocked instances and Actors from producing visible replies, notifications, or new delivery attempts.
 - [x] Purge remote objects older than 90 days unless referenced locally, active, or retained for moderation evidence.
 - [x] Test block precedence, user-specific mute behavior, report access, audit immutability, retention exceptions, and cleanup idempotency.
-- [ ] Commit with `feat: add federation safety controls`.
+- [x] Commit the verified federation safety controls implementation.
 
 ### Task 12: Provision the test Worker and Misskey interoperability stack
 
@@ -264,7 +264,7 @@ Invariants:
 - [ ] Exercise bidirectional follow/unfollow, BBS topic delivery, Misskey reply, BBS reply, bidirectional likes, update, delete, instance block, and delivery recovery after stopping Misskey.
 - [ ] Verify private-board objects return no ActivityPub representation and never appear in Worker delivery logs or Misskey.
 - [x] Document start, stop, backup, reset, log inspection, and teardown commands for the test stack.
-- [ ] Commit with `test: add Misskey interoperability environment`.
+- [x] Commit the local Misskey interoperability environment.
 
 **Milestone 3 acceptance:** The real test Worker and pinned Misskey instance complete the interoperability matrix over HTTPS. Queue failure and recovery are observable, moderation controls work, and private content is absent from all federation surfaces.
 

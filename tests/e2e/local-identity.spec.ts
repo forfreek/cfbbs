@@ -27,7 +27,12 @@ test("registers a local account, keeps its handle immutable, and clears its sess
   await expect(page.getByText(`@${handle}`)).toBeVisible();
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("link", { name: `@${handle}` })).toBeVisible();
+  const profileLink = page.getByRole("link", { name: `@${handle}` });
+  if (testInfo.project.name === "mobile") {
+    await expect(profileLink).toBeHidden();
+  } else {
+    await expect(profileLink).toBeVisible();
+  }
   await page.getByRole("link", { name: "活跃" }).click();
   await expect(page).toHaveURL(/\?sort=active$/);
   await expect(page.getByRole("link", { name: "活跃" })).toHaveAttribute(
