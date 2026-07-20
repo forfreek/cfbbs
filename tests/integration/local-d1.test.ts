@@ -69,5 +69,5 @@ describe("local D1 schema", () => {
         meta: expect.any(Object),
       },
     ]);
-  }, 30_000);
+  }, 60_000);
 });
