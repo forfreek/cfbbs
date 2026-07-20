@@ -57,9 +57,11 @@
   "private": true,
   "scripts": {
     "build": "react-router build",
+    "build:test": "react-router build --mode test",
     "cf-typegen": "wrangler types && react-router typegen",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
+    "deploy:test": "pnpm run build:test && wrangler deploy",
     "dev": "react-router dev",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply cfbbs-local --local",

@@ -37,14 +37,15 @@ pnpm exec wrangler queues create cfbbs-test-federation
 pnpm exec wrangler queues create cfbbs-test-federation-dlq
 ```
 
-Set secrets interactively, apply migrations, then deploy only the `test`
-environment:
+Set secrets interactively, apply migrations, then build and deploy only the
+`test` environment. `pnpm run deploy:test` loads the committed, non-secret
+`.env.test` selector and cannot use the default local bindings:
 
 ```bash
 pnpm exec wrangler secret put BETTER_AUTH_SECRET --env test
 pnpm exec wrangler secret put FEDERATION_KEY_ENCRYPTION_SECRET --env test
-pnpm exec wrangler d1 migrations apply cfbbs-test-db --env test
-pnpm exec wrangler deploy --env test
+pnpm exec wrangler d1 migrations apply cfbbs-test-db --env test --remote
+pnpm run deploy:test
 ```
 
 Use the Compose instructions in

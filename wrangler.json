@@ -51,14 +51,14 @@
         {
           "binding": "DB",
           "database_name": "cfbbs-test-db",
-          "database_id": "00000000-0000-0000-0000-000000000001",
+          "database_id": "ebaf629b-f78c-4a28-bdbf-3192214c4a86",
           "migrations_dir": "drizzle"
         }
       ],
       "kv_namespaces": [
         {
           "binding": "FEDIFY_KV",
-          "id": "00000000000000000000000000000001"
+          "id": "ce61356028874cbaa7735c49e75ace04"
         }
       ],
       "queues": {
@@ -79,6 +79,12 @@
       "triggers": {
         "crons": ["*/5 * * * *", "0 3 * * *"]
       },
+      "routes": [
+        {
+          "pattern": "cfbbs-test.s.lukelzlz.top",
+          "custom_domain": true
+        }
+      ],
       "vars": {
         "APP_ORIGIN": "https://cfbbs-test.s.lukelzlz.top",
         "VALUE_FROM_CLOUDFLARE": "Hello from the CFBBS test environment"
