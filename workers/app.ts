@@ -1,6 +1,7 @@
 import { createRequestHandler } from "react-router";
 
 import { createWorkerFederation } from "@/modules/federation/server";
+import { handlePublicActorCollectionActivity } from "@/modules/federation/collections";
 import { processFederationQueue } from "@/modules/jobs/federation-queue";
 import { enqueuePendingOutboxEvents } from "@/modules/jobs/federation-outbox";
 import { purgeExpiredRemoteObjects } from "@/modules/jobs/remote-retention";
@@ -23,6 +24,13 @@ const requestHandler = createRequestHandler(
 
 export default {
   async fetch(request, env, ctx) {
+    const collectionResponse = await handlePublicActorCollectionActivity(
+      request,
+      env.DB,
+      env.APP_ORIGIN,
+    );
+    if (collectionResponse) return collectionResponse;
+
     const federation = await createWorkerFederation(env);
     return federation.fetch(request, {
       contextData: env,

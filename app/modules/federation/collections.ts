@@ -1,5 +1,6 @@
 import { createNoteActivity } from "./outbox";
 import type { PublicPost } from "./note";
+import { validateHandle } from "@/modules/identity/handle";
 
 export type PublicActorPost = PublicPost;
 export type ActorCollectionKind = "followers" | "following";
@@ -146,6 +147,63 @@ export function orderedCollection(
     totalItems: total,
     first: `${id}?page=true`,
   };
+}
+
+export function activityJsonResponse(value: unknown) {
+  return new Response(JSON.stringify(value), {
+    headers: { "content-type": "application/activity+json" },
+  });
+}
+
+export async function handlePublicActorCollectionActivity(
+  request: Request,
+  database: D1Database,
+  origin: string,
+) {
+  const url = new URL(request.url);
+  const match = url.pathname.match(
+    /^\/users\/([^/]+)\/(followers|following|outbox)$/,
+  );
+  const accept = request.headers.get("accept") ?? "";
+  if (
+    !match ||
+    !(
+      accept.includes("application/activity+json") ||
+      accept.includes("application/ld+json")
+    )
+  ) {
+    return null;
+  }
+
+  let rawHandle: string;
+  try {
+    rawHandle = decodeURIComponent(match[1]);
+  } catch {
+    return new Response("Not found", { status: 404 });
+  }
+  const handle = validateHandle(rawHandle);
+  if (!handle.ok) return new Response("Not found", { status: 404 });
+
+  const owner = await loadLocalActorCollectionOwner(database, handle.value);
+  if (!owner) return new Response("Not found", { status: 404 });
+  const page = url.searchParams.get("page") === "true";
+  const kind = match[2] as "followers" | "following" | "outbox";
+
+  if (kind === "outbox") {
+    const outbox = await loadPublicActorOutbox(database, owner.actorId);
+    return activityJsonResponse(
+      page
+        ? outboxPage(origin, owner.handle, outbox.posts)
+        : orderedCollection(origin, owner.handle, "outbox", outbox.total),
+    );
+  }
+
+  const collection = await loadActorCollection(database, owner.actorId, kind);
+  return activityJsonResponse(
+    page
+      ? actorCollectionPage(origin, owner.handle, kind, collection.items)
+      : orderedCollection(origin, owner.handle, kind, collection.total),
+  );
 }
 
 export function outboxPage(

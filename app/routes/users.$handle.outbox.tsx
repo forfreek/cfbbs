@@ -4,13 +4,10 @@ import type { Route } from "./+types/users.$handle.outbox";
 import {
   loadPublicActorOutbox,
   loadLocalActorCollectionOwner,
-  orderedCollection,
-  outboxPage,
 } from "@/modules/federation/collections";
-import { acceptsActivityStreams } from "@/modules/federation/object";
 import { validateHandle } from "@/modules/identity/handle";
 
-export async function loader({ params, request, context }: Route.LoaderArgs) {
+export async function loader({ params, context }: Route.LoaderArgs) {
   const handle = validateHandle(params.handle ?? "");
   if (!handle.ok) throw new Response("Not found", { status: 404 });
 
@@ -24,25 +21,6 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     context.cloudflare.env.DB,
     owner.actorId,
   );
-  const page = new URL(request.url).searchParams.get("page") === "true";
-  if (acceptsActivityStreams(request.headers.get("accept") ?? "")) {
-    return Response.json(
-      page
-        ? outboxPage(
-            context.cloudflare.env.APP_ORIGIN,
-            owner.handle,
-            outbox.posts,
-          )
-        : orderedCollection(
-            context.cloudflare.env.APP_ORIGIN,
-            owner.handle,
-            "outbox",
-            outbox.total,
-          ),
-      { headers: { "content-type": "application/activity+json" } },
-    );
-  }
-
   return { owner, posts: outbox.posts };
 }
 

@@ -2,15 +2,12 @@ import type { Route } from "./+types/users.$handle.following";
 import { Link } from "react-router";
 
 import {
-  actorCollectionPage,
   loadActorCollection,
   loadLocalActorCollectionOwner,
-  orderedCollection,
 } from "@/modules/federation/collections";
-import { acceptsActivityStreams } from "@/modules/federation/object";
 import { validateHandle } from "@/modules/identity/handle";
 
-export async function loader({ params, request, context }: Route.LoaderArgs) {
+export async function loader({ params, context }: Route.LoaderArgs) {
   const handle = validateHandle(params.handle ?? "");
   if (!handle.ok) throw new Response("Not found", { status: 404 });
   const owner = await loadLocalActorCollectionOwner(
@@ -24,25 +21,6 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     owner.actorId,
     "following",
   );
-  const page = new URL(request.url).searchParams.get("page") === "true";
-  if (acceptsActivityStreams(request.headers.get("accept") ?? "")) {
-    return Response.json(
-      page
-        ? actorCollectionPage(
-            context.cloudflare.env.APP_ORIGIN,
-            owner.handle,
-            "following",
-            collection.items,
-          )
-        : orderedCollection(
-            context.cloudflare.env.APP_ORIGIN,
-            owner.handle,
-            "following",
-            collection.total,
-          ),
-      { headers: { "content-type": "application/activity+json" } },
-    );
-  }
   return { owner, actors: collection.items };
 }
 
