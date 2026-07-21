@@ -42,6 +42,7 @@ import { recordRemoteLike, undoRemoteLike } from "./likes";
 import { isRemoteActorQuarantined } from "@/modules/moderation/remote-quarantine";
 import { isSafeRemoteUrl } from "./remote-url";
 import { createBoundedRemoteDocumentLoader } from "./remote-fetch";
+import { nodeInfoDocument } from "./nodeinfo";
 import {
   deleteRemoteNote,
   storeRemoteNote,
@@ -750,6 +751,12 @@ export async function processInboundDelete(
 }
 
 const builder = createFederationBuilder<FederationEnvironment>();
+
+// Fedify owns the NodeInfo well-known endpoint before unmatched requests reach
+// React Router, so the document must be registered on the federation builder.
+builder.setNodeInfoDispatcher("/nodeinfo/2.1", (context) =>
+  nodeInfoDocument(context.canonicalOrigin.toString()),
+);
 
 builder
   .setActorDispatcher("/users/{identifier}", async (context, identifier) => {

@@ -85,6 +85,34 @@ function federationEnvironment() {
 }
 
 describe("Fedify inbox gateway", () => {
+  it("advertises the configured NodeInfo document through Fedify", async () => {
+    const { environment } = federationEnvironment();
+    const federation = await createWorkerFederation(environment);
+
+    const discovery = await federation.fetch(
+      new Request("https://bbs.example.test/.well-known/nodeinfo"),
+      { contextData: environment },
+    );
+    const document = await federation.fetch(
+      new Request("https://bbs.example.test/nodeinfo/2.1"),
+      { contextData: environment },
+    );
+
+    await expect(discovery.json()).resolves.toMatchObject({
+      links: [
+        {
+          rel: "http://nodeinfo.diaspora.software/ns/schema/2.1",
+          href: "https://bbs.example.test/nodeinfo/2.1",
+        },
+      ],
+    });
+    await expect(document.json()).resolves.toMatchObject({
+      version: "2.1",
+      protocols: ["activitypub"],
+      metadata: { nodeName: "bbs.example.test" },
+    });
+  });
+
   it("serializes a local Actor with its public signing key", async () => {
     const { environment } = federationEnvironment();
     const federation = await createWorkerFederation(environment);
