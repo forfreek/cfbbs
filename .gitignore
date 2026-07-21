@@ -206,3 +206,6 @@ dist
 ### Playwright ###
 /playwright-report/
 /test-results/
+
+### Local federation verification artifacts ###
+.tmp-*

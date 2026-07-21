@@ -37,8 +37,9 @@ pnpm exec wrangler queues create cfbbs-test-federation
 pnpm exec wrangler queues create cfbbs-test-federation-dlq
 ```
 
-Set secrets interactively, apply migrations, then build and deploy only the
-`test` environment. `pnpm run deploy:test` loads the committed, non-secret
+Set secrets interactively, apply migrations (which also initialize the
+required system groups, permissions, and starter boards), then build and
+deploy only the `test` environment. `pnpm run deploy:test` loads the committed, non-secret
 `.env.test` selector and cannot use the default local bindings:
 
 ```bash

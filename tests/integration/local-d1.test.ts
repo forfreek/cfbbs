@@ -30,6 +30,24 @@ describe("local D1 schema", () => {
     const local = ["--local", "--persist-to", persistenceDirectory];
 
     await runWrangler(["d1", "migrations", "apply", "cfbbs-local", ...local]);
+    const migrated = await runWrangler([
+      "d1",
+      "execute",
+      "cfbbs-local",
+      ...local,
+      "--command",
+      "SELECT (SELECT COUNT(*) FROM groups) AS group_count, (SELECT COUNT(*) FROM boards) AS board_count;",
+      "--json",
+    ]);
+
+    expect(JSON.parse(migrated.stdout)).toEqual([
+      {
+        results: [{ group_count: 3, board_count: 2 }],
+        success: true,
+        meta: expect.any(Object),
+      },
+    ]);
+
     await runWrangler([
       "d1",
       "execute",
