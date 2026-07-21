@@ -4,33 +4,24 @@ import { Link } from "react-router";
 import {
   actorCollectionPage,
   loadActorCollection,
+  loadLocalActorCollectionOwner,
   orderedCollection,
 } from "@/modules/federation/collections";
 import { acceptsActivityStreams } from "@/modules/federation/object";
 import { validateHandle } from "@/modules/identity/handle";
-import { createDatabase } from "@/db/client.server";
-import { federationActors, profiles } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   const handle = validateHandle(params.handle ?? "");
   if (!handle.ok) throw new Response("Not found", { status: 404 });
-  const database = createDatabase(context.cloudflare.env.DB);
-  const profile = await database.query.profiles.findFirst({
-    where: eq(profiles.handle, handle.value),
-  });
-  if (!profile) throw new Response("Not found", { status: 404 });
-  const actor = await database.query.federationActors.findFirst({
-    where: and(
-      eq(federationActors.id, profile.userId),
-      eq(federationActors.isLocal, true),
-    ),
-  });
-  if (!actor) throw new Response("Not found", { status: 404 });
+  const owner = await loadLocalActorCollectionOwner(
+    context.cloudflare.env.DB,
+    handle.value,
+  );
+  if (!owner) throw new Response("Not found", { status: 404 });
 
   const collection = await loadActorCollection(
     context.cloudflare.env.DB,
-    actor.id,
+    owner.actorId,
     "following",
   );
   const page = new URL(request.url).searchParams.get("page") === "true";
@@ -39,29 +30,29 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       page
         ? actorCollectionPage(
             context.cloudflare.env.APP_ORIGIN,
-            profile.handle,
+            owner.handle,
             "following",
             collection.items,
           )
         : orderedCollection(
             context.cloudflare.env.APP_ORIGIN,
-            profile.handle,
+            owner.handle,
             "following",
             collection.total,
           ),
       { headers: { "content-type": "application/activity+json" } },
     );
   }
-  return { profile, actors: collection.items };
+  return { owner, actors: collection.items };
 }
 
 export default function UserFollowing({ loaderData }: Route.ComponentProps) {
-  const { profile, actors } = loaderData;
+  const { owner, actors } = loaderData;
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <p className="text-muted-foreground text-sm">
-        <Link className="hover:underline" to={`/users/${profile.handle}`}>
-          @{profile.handle}
+        <Link className="hover:underline" to={`/users/${owner.handle}`}>
+          @{owner.handle}
         </Link>
         正在关注
       </p>

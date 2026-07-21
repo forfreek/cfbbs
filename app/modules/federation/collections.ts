@@ -3,6 +3,10 @@ import type { PublicPost } from "./note";
 
 export type PublicActorPost = PublicPost;
 export type ActorCollectionKind = "followers" | "following";
+export type LocalActorCollectionOwner = {
+  actorId: string;
+  handle: string;
+};
 
 const publicActorPostQuery = `
   SELECT
@@ -77,6 +81,25 @@ function actorCollectionQueries(kind: ActorCollectionKind) {
 
 type Count = { total: number };
 type ActorUri = { uri: string };
+
+const localActorCollectionOwnerQuery = `
+  SELECT federation_actors.id AS actorId, profiles.handle
+  FROM profiles
+  INNER JOIN federation_actors ON federation_actors.id = profiles.user_id
+  WHERE profiles.handle = ?
+    AND federation_actors.is_local = 1
+  LIMIT 1
+`;
+
+export async function loadLocalActorCollectionOwner(
+  database: D1Database,
+  handle: string,
+) {
+  return database
+    .prepare(localActorCollectionOwnerQuery)
+    .bind(handle)
+    .first<LocalActorCollectionOwner>();
+}
 
 export async function loadPublicActorOutbox(
   database: D1Database,
@@ -160,4 +183,5 @@ export const publicCollectionQueries = {
   publicActorPostQuery,
   publicActorPostCountQuery,
   actorCollectionQueries,
+  localActorCollectionOwnerQuery,
 };

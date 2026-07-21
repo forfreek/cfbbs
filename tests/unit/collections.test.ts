@@ -75,4 +75,13 @@ describe("ActivityPub public collections", () => {
       orderedItems: ["https://remote.example/users/bob"],
     });
   });
+
+  it("looks up collection owners with an explicit local-actor predicate", () => {
+    expect(publicCollectionQueries.localActorCollectionOwnerQuery).toContain(
+      "federation_actors.is_local = 1",
+    );
+    expect(publicCollectionQueries.localActorCollectionOwnerQuery).toContain(
+      "profiles.handle = ?",
+    );
+  });
 });
