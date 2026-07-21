@@ -821,8 +821,7 @@ export async function createWorkerFederation(
     }),
     manuallyStartQueue: true,
     origin: environment.APP_ORIGIN,
-    allowPrivateAddress:
-      environment.FEDIFY_ALLOW_PRIVATE_ADDRESS === "true",
+    allowPrivateAddress: environment.FEDIFY_ALLOW_PRIVATE_ADDRESS === "true",
   });
 }
 
