@@ -820,7 +820,6 @@ export async function createWorkerFederation(
     }),
     manuallyStartQueue: true,
     origin: environment.APP_ORIGIN,
-    inboxChallengePolicy: { enabled: true, requestNonce: true },
   });
 }
 
