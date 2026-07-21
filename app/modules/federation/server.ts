@@ -92,6 +92,21 @@ function remoteDocumentLoaders(context: InboxContext<FederationEnvironment>) {
   };
 }
 
+function createTestContextDocumentLoader() {
+  const loader = createBoundedRemoteDocumentLoader();
+  return async (...args: Parameters<typeof loader>) => {
+    const [url] = args;
+    if (url.toString() === "https://misskey-hub.net/ns#") {
+      return {
+        document: { "@context": {} },
+        documentUrl: url.toString(),
+        contextUrl: null,
+      };
+    }
+    return loader(...args);
+  };
+}
+
 function actorName(value: unknown) {
   if (typeof value === "string") return value;
   if (
@@ -833,7 +848,10 @@ export async function createWorkerFederation(
     // so signed-key discovery remains possible there.  Production keeps
     // Fedify's default loader and its private-address protection.
     ...(useTestRemoteDocumentLoader
-      ? { documentLoaderFactory: () => createBoundedRemoteDocumentLoader() }
+      ? {
+          documentLoaderFactory: () => createBoundedRemoteDocumentLoader(),
+          contextLoaderFactory: () => createTestContextDocumentLoader(),
+        }
       : {}),
   });
 }
