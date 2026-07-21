@@ -54,6 +54,7 @@ export type FederationEnvironment = Pick<
   "APP_ORIGIN" | "DB" | "FEDERATION_QUEUE" | "FEDIFY_KV"
 > & {
   FEDERATION_KEY_ENCRYPTION_SECRET?: string;
+  FEDIFY_ALLOW_PRIVATE_ADDRESS?: string;
 };
 
 type LocalActor = { id: string; handle: string };
@@ -820,6 +821,8 @@ export async function createWorkerFederation(
     }),
     manuallyStartQueue: true,
     origin: environment.APP_ORIGIN,
+    allowPrivateAddress:
+      environment.FEDIFY_ALLOW_PRIVATE_ADDRESS === "true",
   });
 }
 

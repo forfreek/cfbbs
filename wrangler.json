@@ -87,6 +87,7 @@
       ],
       "vars": {
         "APP_ORIGIN": "https://cfbbs-test.s.lukelzlz.top",
+        "FEDIFY_ALLOW_PRIVATE_ADDRESS": "true",
         "VALUE_FROM_CLOUDFLARE": "Hello from the CFBBS test environment"
       }
     }
