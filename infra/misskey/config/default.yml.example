@@ -1,6 +1,9 @@
 # Copy this file to config/default.yml and replace every CHANGE_ME value.
 # The public URL must use the actual, HTTPS-enabled Misskey test hostname.
 url: https://misskey-test.s.lukelzlz.top/
+# Misskey 2026.x no longer defaults this value. Docker publishes this internal
+# port to the isolated host port configured in .env.
+port: 3000
 
 db:
   host: db
@@ -13,6 +16,6 @@ redis:
   host: redis
   port: 6379
 
-# Generate once when creating the disposable test instance. Keep it stable for
-# that instance's lifetime, and never reuse it for production.
-id: CHANGE_ME_INSTANCE_ID
+# Misskey's persistent record-ID generation algorithm. Do not change it after
+# the instance has started; "aidx" is the upstream default.
+id: "aidx"
