@@ -1,4 +1,8 @@
-export function nodeInfoDocument(origin: string) {
+import type { NodeInfo } from "@fedify/fedify";
+
+export type NodeInfoDocument = NodeInfo & { readonly version: "2.1" };
+
+export function nodeInfoDocument(origin: string): NodeInfoDocument {
   return {
     version: "2.1",
     software: { name: "cfbbs", version: "0.1.0" },

@@ -755,9 +755,12 @@ const builder = createFederationBuilder<FederationEnvironment>();
 
 // Fedify owns the NodeInfo well-known endpoint before unmatched requests reach
 // React Router, so the document must be registered on the federation builder.
-builder.setNodeInfoDispatcher("/nodeinfo/2.1", (context) =>
-  nodeInfoDocument(context.canonicalOrigin.toString()),
-);
+builder.setNodeInfoDispatcher("/nodeinfo/2.1", (context) => {
+  const { version: _version, ...document } = nodeInfoDocument(
+    context.canonicalOrigin.toString(),
+  );
+  return document;
+});
 
 builder
   .setActorDispatcher("/users/{identifier}", async (context, identifier) => {

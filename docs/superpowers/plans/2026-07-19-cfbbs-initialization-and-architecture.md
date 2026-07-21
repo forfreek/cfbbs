@@ -256,8 +256,8 @@ Invariants:
 **Files:** `infra/misskey/compose.yml`, `infra/misskey/.env.example`, `infra/misskey/README.md`, `docs/operations/federation-test.md`
 
 - [x] Use `cfbbs-test.s.lukelzlz.top` and `misskey-test.s.lukelzlz.top` as the explicit test hostnames.
-- [ ] Authenticate Wrangler, create the test D1/KV/Queue/DLQ resources, store their IDs only in Wrangler configuration, and upload secrets with `wrangler secret put`.
-- [ ] Deploy the `test` Worker and apply test D1 migrations before enabling public federation.
+- [x] Authenticate Wrangler, create the test D1/KV/Queue/DLQ resources, store their IDs only in Wrangler configuration, and upload secrets with `wrangler secret put`.
+- [x] Deploy the `test` Worker and apply test D1 migrations before enabling public federation.
 - [x] Create an on-demand Compose stack pinned to Misskey 2026.6.0 with independent PostgreSQL and Redis services, persistent test volumes, health checks, and an approximate aggregate 2.5 GiB memory ceiling.
 - [x] Configure one exact-match HTTPS Nginx vhost for Misskey without modifying unrelated virtual hosts.
 - [ ] Verify WebFinger and Actor discovery in both directions before creating test follows.
@@ -265,6 +265,16 @@ Invariants:
 - [ ] Verify private-board objects return no ActivityPub representation and never appear in Worker delivery logs or Misskey.
 - [x] Document start, stop, backup, reset, log inspection, and teardown commands for the test stack.
 - [x] Commit the local Misskey interoperability environment.
+
+**Test deployment status (2026-07-21):** The `cfbbs-test` Worker is deployed
+and its remote D1 migrations are current. Its health, NodeInfo, WebFinger, and
+local Actor endpoints are publicly reachable over HTTPS. The Misskey origin is
+healthy behind its exact-match Nginx vhost, but its proxied hostname currently
+fails the Cloudflare edge TLS handshake. `misskey-test.s.lukelzlz.top` is a
+second-level wildcard hostname and is not covered by the zone's existing
+Universal SSL certificate. Finish the remaining interoperability checks only
+after Cloudflare serves a valid certificate for that hostname (or the test
+instance is moved to a covered hostname).
 
 **Milestone 3 acceptance:** The real test Worker and pinned Misskey instance complete the interoperability matrix over HTTPS. Queue failure and recovery are observable, moderation controls work, and private content is absent from all federation surfaces.
 
@@ -288,7 +298,7 @@ Before the remote interoperability milestone, additionally run:
 
 ```bash
 pnpm wrangler whoami
-pnpm wrangler d1 migrations list cfbbs-test-db --env test
+pnpm wrangler d1 migrations list cfbbs-test-db --env test --remote
 pnpm wrangler queues list
 docker compose -f infra/misskey/compose.yml config
 ```
