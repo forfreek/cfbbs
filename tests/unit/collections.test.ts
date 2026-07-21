@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   actorCollectionPage,
+  activityJsonResponse,
   orderedCollection,
   outboxPage,
   publicCollectionQueries,
@@ -30,6 +31,14 @@ describe("ActivityPub public collections", () => {
       totalItems: 2,
       first: "https://bbs.example.test/users/alice/outbox?page=true",
     });
+  });
+
+  it("writes ActivityPub JSON without a generic JSON content type", () => {
+    expect(
+      activityJsonResponse({ type: "OrderedCollection" }).headers.get(
+        "content-type",
+      ),
+    ).toBe("application/activity+json");
   });
 
   it("wraps local posts in public Create activities", () => {
