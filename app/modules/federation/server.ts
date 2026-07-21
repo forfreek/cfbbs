@@ -756,9 +756,10 @@ const builder = createFederationBuilder<FederationEnvironment>();
 // Fedify owns the NodeInfo well-known endpoint before unmatched requests reach
 // React Router, so the document must be registered on the federation builder.
 builder.setNodeInfoDispatcher("/nodeinfo/2.1", (context) => {
-  const { version: _version, ...document } = nodeInfoDocument(
+  const { version, ...document } = nodeInfoDocument(
     context.canonicalOrigin.toString(),
   );
+  void version;
   return document;
 });
 
@@ -817,6 +818,9 @@ builder
 export async function createWorkerFederation(
   environment: FederationEnvironment,
 ): Promise<Federation<FederationEnvironment>> {
+  const useTestRemoteDocumentLoader =
+    environment.FEDIFY_ALLOW_PRIVATE_ADDRESS === "true";
+
   return builder.build({
     kv: new WorkersKvStore(environment.FEDIFY_KV),
     queue: new WorkersMessageQueue(environment.FEDERATION_QUEUE, {
@@ -824,7 +828,13 @@ export async function createWorkerFederation(
     }),
     manuallyStartQueue: true,
     origin: environment.APP_ORIGIN,
-    allowPrivateAddress: environment.FEDIFY_ALLOW_PRIVATE_ADDRESS === "true",
+    // The test instance's DNS chain intentionally resolves through the local
+    // server.  Use the same bounded HTTPS loader as inbound object handling
+    // so signed-key discovery remains possible there.  Production keeps
+    // Fedify's default loader and its private-address protection.
+    ...(useTestRemoteDocumentLoader
+      ? { documentLoaderFactory: () => createBoundedRemoteDocumentLoader() }
+      : {}),
   });
 }
 
