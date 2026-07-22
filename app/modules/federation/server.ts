@@ -170,6 +170,24 @@ async function recordTestInboundFollowStage(
   );
 }
 
+async function recordTestUnverifiedInboxActivity(
+  context: { data: FederationEnvironment },
+  reason: unknown,
+) {
+  if (context.data.FEDIFY_ALLOW_PRIVATE_ADDRESS !== "true") return;
+  // This test-only trace is deliberately limited to public signature failure
+  // metadata.  It observes the verification result without accepting the
+  // activity, so the normal 401 security behavior remains intact.
+  await context.data.FEDIFY_KV.put(
+    "cfbbs:test:unverified-inbox-activity",
+    JSON.stringify({
+      at: new Date().toISOString(),
+      reason,
+    }),
+    { expirationTtl: 600 },
+  );
+}
+
 function actorName(value: unknown) {
   if (typeof value === "string") return value;
   if (
@@ -888,6 +906,9 @@ builder
 builder
   .setInboxListeners("/users/{identifier}/inbox", "/inbox")
   .withIdempotency("global")
+  .onUnverifiedActivity(async (context, _activity, reason) => {
+    await recordTestUnverifiedInboxActivity(context, reason);
+  })
   .on(Follow, processInboundFollow)
   .on(Undo, processInboundUndo)
   .on(Accept, processInboundFollowAccept)
