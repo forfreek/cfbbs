@@ -18,6 +18,7 @@ import {
 } from "@/modules/federation/keys";
 import {
   createWorkerFederation,
+  createTestContextDocumentLoader,
   processInboundFollowAccept,
   processInboundCreate,
   processInboundDelete,
@@ -85,6 +86,29 @@ function federationEnvironment() {
 }
 
 describe("Fedify inbox gateway", () => {
+  it("parses a Misskey Follow with the built-in ActivityStreams context", async () => {
+    const follow = await Follow.fromJsonLd(
+      {
+        "@context": [
+          "https://www.w3.org/ns/activitystreams",
+          "https://w3id.org/security/v1",
+          {
+            misskey: "https://misskey-hub.net/ns#",
+            _misskey_content: "misskey:_misskey_content",
+          },
+        ],
+        id: "https://misskey.example/follows/1",
+        type: "Follow",
+        actor: "https://misskey.example/users/alice",
+        object: "https://bbs.example.test/users/bob",
+      },
+      { contextLoader: createTestContextDocumentLoader() },
+    );
+
+    expect(follow.id?.href).toBe("https://misskey.example/follows/1");
+    expect(follow.actorId?.href).toBe("https://misskey.example/users/alice");
+  });
+
   it("advertises the configured NodeInfo document through Fedify", async () => {
     const { environment } = federationEnvironment();
     const federation = await createWorkerFederation(environment);

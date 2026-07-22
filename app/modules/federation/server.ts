@@ -4,6 +4,7 @@ import {
   type Federation,
   type InboxContext,
 } from "@fedify/fedify";
+import { getDocumentLoader } from "@fedify/vocab-runtime";
 import {
   Accept,
   Create,
@@ -92,9 +93,10 @@ function remoteDocumentLoaders(context: InboxContext<FederationEnvironment>) {
   };
 }
 
-function createTestContextDocumentLoader() {
-  const loader = createBoundedRemoteDocumentLoader();
-  return async (...args: Parameters<typeof loader>) => {
+export function createTestContextDocumentLoader() {
+  const builtInLoader = getDocumentLoader();
+  const remoteLoader = createBoundedRemoteDocumentLoader();
+  return async (...args: Parameters<typeof remoteLoader>) => {
     const [url] = args;
     if (url.toString() === "https://misskey-hub.net/ns#") {
       return {
@@ -103,7 +105,14 @@ function createTestContextDocumentLoader() {
         contextUrl: null,
       };
     }
-    return loader(...args);
+    try {
+      // Fedify ships the standard ActivityStreams and security contexts.  A
+      // custom factory replaces that default, so retain it before falling back
+      // to the bounded loader needed for this test instance's CNAME chain.
+      return await builtInLoader(...args);
+    } catch {
+      return remoteLoader(...args);
+    }
   };
 }
 
