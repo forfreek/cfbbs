@@ -907,6 +907,7 @@ builder
   .setInboxListeners("/users/{identifier}/inbox", "/inbox")
   .withIdempotency("global")
   .onUnverifiedActivity(async (context, _activity, reason) => {
+    console.warn("CFBBS unverified inbox activity", reason);
     await recordTestUnverifiedInboxActivity(context, reason);
   })
   .on(Follow, processInboundFollow)
