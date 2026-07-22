@@ -116,6 +116,18 @@ export function createTestContextDocumentLoader() {
   };
 }
 
+async function recordTestInboundFollowStage(
+  context: InboxContext<FederationEnvironment>,
+  stage: string,
+) {
+  if (context.data.FEDIFY_ALLOW_PRIVATE_ADDRESS !== "true") return;
+  await context.data.FEDIFY_KV.put(
+    "cfbbs:test:inbound-follow-stage",
+    JSON.stringify({ at: new Date().toISOString(), stage }),
+    { expirationTtl: 600 },
+  );
+}
+
 function actorName(value: unknown) {
   if (typeof value === "string") return value;
   if (
@@ -384,10 +396,13 @@ export async function processInboundFollow(
   if (!claimed) return;
 
   try {
+    await recordTestInboundFollowStage(context, "claimed");
     if (await isBlockedRemoteActor(context.data.DB, actorUri)) {
       throw new RejectedInboundActivity("Remote actor or instance is blocked.");
     }
+    await recordTestInboundFollowStage(context, "resolving-remote-actor");
     const follower = await resolveRemoteFollower(context, follow);
+    await recordTestInboundFollowStage(context, "resolved-remote-actor");
     await acceptRemoteFollow(context.data.DB, {
       eventId: crypto.randomUUID(),
       followActivityId: activityId,
@@ -396,6 +411,7 @@ export async function processInboundFollow(
       origin: context.data.APP_ORIGIN,
       follower,
     });
+    await recordTestInboundFollowStage(context, "accepted");
     await completeInboxActivity(context.data.DB, activityId);
   } catch (error) {
     if (error instanceof RejectedInboundActivity) {
