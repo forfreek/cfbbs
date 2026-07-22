@@ -116,6 +116,48 @@ export function createTestContextDocumentLoader() {
   };
 }
 
+function createTestRemoteDocumentLoader(environment: FederationEnvironment) {
+  const loader = createBoundedRemoteDocumentLoader();
+  return async (...args: Parameters<typeof loader>) => {
+    const [url] = args;
+    const key = "cfbbs:test:remote-document-loader";
+    await environment.FEDIFY_KV.put(
+      key,
+      JSON.stringify({
+        at: new Date().toISOString(),
+        stage: "loading",
+        url: url.toString(),
+      }),
+      { expirationTtl: 600 },
+    );
+    try {
+      const document = await loader(...args);
+      await environment.FEDIFY_KV.put(
+        key,
+        JSON.stringify({
+          at: new Date().toISOString(),
+          stage: "loaded",
+          url: url.toString(),
+        }),
+        { expirationTtl: 600 },
+      );
+      return document;
+    } catch (error) {
+      await environment.FEDIFY_KV.put(
+        key,
+        JSON.stringify({
+          at: new Date().toISOString(),
+          stage: "failed",
+          url: url.toString(),
+          message: error instanceof Error ? error.message : String(error),
+        }),
+        { expirationTtl: 600 },
+      );
+      throw error;
+    }
+  };
+}
+
 async function recordTestInboundFollowStage(
   context: InboxContext<FederationEnvironment>,
   stage: string,
@@ -874,7 +916,8 @@ export async function createWorkerFederation(
     // Fedify's default loader and its private-address protection.
     ...(useTestRemoteDocumentLoader
       ? {
-          documentLoaderFactory: () => createBoundedRemoteDocumentLoader(),
+          documentLoaderFactory: () =>
+            createTestRemoteDocumentLoader(environment),
           contextLoaderFactory: () => createTestContextDocumentLoader(),
         }
       : {}),
