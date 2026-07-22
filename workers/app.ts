@@ -22,6 +22,22 @@ const requestHandler = createRequestHandler(
   import.meta.env.MODE,
 );
 
+async function recordTestFederationFailure(env: Env, error: unknown) {
+  if (env.FEDIFY_ALLOW_PRIVATE_ADDRESS !== "true") return;
+
+  const exception = error instanceof Error ? error : new Error(String(error));
+  await env.FEDIFY_KV.put(
+    "cfbbs:test:last-federation-fetch-failure",
+    JSON.stringify({
+      at: new Date().toISOString(),
+      name: exception.name,
+      message: exception.message,
+      stack: exception.stack?.slice(0, 8_000) ?? null,
+    }),
+    { expirationTtl: 600 },
+  );
+}
+
 export default {
   async fetch(request, env, ctx) {
     const collectionResponse = await handlePublicActorCollectionActivity(
@@ -32,17 +48,22 @@ export default {
     if (collectionResponse) return collectionResponse;
 
     const federation = await createWorkerFederation(env);
-    return federation.fetch(request, {
-      contextData: env,
-      onNotFound: (unmatchedRequest) =>
-        requestHandler(unmatchedRequest, {
-          cloudflare: { env, ctx },
-        }),
-      onNotAcceptable: (unacceptableRequest) =>
-        requestHandler(unacceptableRequest, {
-          cloudflare: { env, ctx },
-        }),
-    });
+    try {
+      return await federation.fetch(request, {
+        contextData: env,
+        onNotFound: (unmatchedRequest) =>
+          requestHandler(unmatchedRequest, {
+            cloudflare: { env, ctx },
+          }),
+        onNotAcceptable: (unacceptableRequest) =>
+          requestHandler(unacceptableRequest, {
+            cloudflare: { env, ctx },
+          }),
+      });
+    } catch (error) {
+      ctx.waitUntil(recordTestFederationFailure(env, error));
+      throw error;
+    }
   },
   async queue(batch, env) {
     await processFederationQueue(batch, env);
