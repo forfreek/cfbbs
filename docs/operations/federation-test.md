@@ -49,6 +49,16 @@ pnpm exec wrangler d1 migrations apply cfbbs-test-db --env test --remote
 pnpm run deploy:test
 ```
 
+### Cloudflare Workers Builds
+
+For the Git-connected `cfbbs-test` Worker, configure the repository root as
+`/`, the build command as `pnpm run build:test`, and the deploy command as
+`pnpm exec wrangler deploy`. The build command already writes
+`build/server/wrangler.json` with the committed `test` bindings, so the deploy
+command must not call `pnpm run deploy:test` (which would build a second time).
+Running Vite twice in one Workers Builds job can fail while its dependency
+optimizer tries to use an unavailable WebSocket.
+
 Use the Compose instructions in
 [`infra/misskey/README.md`](../../infra/misskey/README.md) only after its URL
 is served by the approved HTTPS virtual host. The test stack binds Misskey to
