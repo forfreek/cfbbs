@@ -45,22 +45,27 @@ async function recordTestInboundRequest(env: Env, request: Request) {
   ) {
     return;
   }
+  const metadata = {
+    at: new Date().toISOString(),
+    date: request.headers.get("date"),
+    hasDigest: request.headers.has("digest"),
+    hasSignature: request.headers.has("signature"),
+    contentType: request.headers.get("content-type"),
+  };
+  // Awaiting this test-only write proves that the request reached the Worker;
+  // the log lets Tail observe the same non-sensitive metadata if KV tracing
+  // itself is unavailable.
   await env.FEDIFY_KV.put(
     "cfbbs:test:inbound-request-metadata",
-    JSON.stringify({
-      at: new Date().toISOString(),
-      date: request.headers.get("date"),
-      hasDigest: request.headers.has("digest"),
-      hasSignature: request.headers.has("signature"),
-      contentType: request.headers.get("content-type"),
-    }),
+    JSON.stringify(metadata),
     { expirationTtl: 600 },
   );
+  console.log("CFBBS inbound ActivityPub request", metadata);
 }
 
 export default {
   async fetch(request, env, ctx) {
-    ctx.waitUntil(recordTestInboundRequest(env, request));
+    await recordTestInboundRequest(env, request);
     const collectionResponse = await handlePublicActorCollectionActivity(
       request,
       env.DB,
