@@ -38,8 +38,29 @@ async function recordTestFederationFailure(env: Env, error: unknown) {
   );
 }
 
+async function recordTestInboundRequest(env: Env, request: Request) {
+  if (
+    env.FEDIFY_ALLOW_PRIVATE_ADDRESS !== "true" ||
+    !request.url.includes("/inbox")
+  ) {
+    return;
+  }
+  await env.FEDIFY_KV.put(
+    "cfbbs:test:inbound-request-metadata",
+    JSON.stringify({
+      at: new Date().toISOString(),
+      date: request.headers.get("date"),
+      hasDigest: request.headers.has("digest"),
+      hasSignature: request.headers.has("signature"),
+      contentType: request.headers.get("content-type"),
+    }),
+    { expirationTtl: 600 },
+  );
+}
+
 export default {
   async fetch(request, env, ctx) {
+    ctx.waitUntil(recordTestInboundRequest(env, request));
     const collectionResponse = await handlePublicActorCollectionActivity(
       request,
       env.DB,
