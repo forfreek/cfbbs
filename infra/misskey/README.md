@@ -21,7 +21,7 @@ chmod 600 .env config/default.yml
 ```
 
 Replace the password and instance ID in both files. Set `url` in
-`config/default.yml` to `https://misskey-test.s.lukelzlz.top/` before starting
+`config/default.yml` to `https://misskey-test.lukelzlz.top/` before starting
 the service. The configuration files are ignored by Git.
 
 Validate interpolation and Compose syntax without pulling or starting images:

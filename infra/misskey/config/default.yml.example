@@ -1,6 +1,6 @@
 # Copy this file to config/default.yml and replace every CHANGE_ME value.
 # The public URL must use the actual, HTTPS-enabled Misskey test hostname.
-url: https://misskey-test.s.lukelzlz.top/
+url: https://misskey-test.lukelzlz.top/
 # Misskey 2026.x no longer defaults this value. Docker publishes this internal
 # port to the isolated host port configured in .env.
 port: 3000

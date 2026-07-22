@@ -1,10 +1,11 @@
 # Federation test environment runbook
 
 This runbook describes the disposable interoperability environment. No
-Cloudflare remote resources, deployed Worker, or Docker containers have been
-created for CFBBS yet. The host has one dedicated exact-match Nginx vhost at
-`/www/server/panel/vhost/nginx/misskey-test.s.lukelzlz.top.conf`; it proxies
-only `misskey-test.s.lukelzlz.top` to loopback `127.0.0.1:3100` and does not
+Cloudflare remote resources, the deployed Worker, and the disposable Docker
+stack must remain test-only. The host has a dedicated 宝塔-managed exact-match
+Nginx vhost at
+`/www/server/panel/vhost/nginx/misskey-test.lukelzlz.top.conf`; it proxies
+only `misskey-test.lukelzlz.top` to loopback `127.0.0.1:3100` and does not
 modify the existing 宝塔 wildcard site.
 
 ## Required approval and inputs
@@ -12,7 +13,7 @@ modify the existing 宝塔 wildcard site.
 Before beginning the remote phase, obtain all of the following:
 
 - the test hostnames `cfbbs-test.s.lukelzlz.top` and
-  `misskey-test.s.lukelzlz.top`;
+  `misskey-test.lukelzlz.top`;
 - authorization to authenticate the intended Cloudflare account and create
   its test-only D1, KV, Queue, and DLQ resources;
 - authorization to pull and start the Misskey test stack; and

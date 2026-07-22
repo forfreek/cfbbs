@@ -255,7 +255,7 @@ Invariants:
 
 **Files:** `infra/misskey/compose.yml`, `infra/misskey/.env.example`, `infra/misskey/README.md`, `docs/operations/federation-test.md`
 
-- [x] Use `cfbbs-test.s.lukelzlz.top` and `misskey-test.s.lukelzlz.top` as the explicit test hostnames.
+- [x] Use `cfbbs-test.s.lukelzlz.top` and `misskey-test.lukelzlz.top` as the explicit test hostnames.
 - [x] Authenticate Wrangler, create the test D1/KV/Queue/DLQ resources, store their IDs only in Wrangler configuration, and upload secrets with `wrangler secret put`.
 - [x] Deploy the `test` Worker and apply test D1 migrations before enabling public federation.
 - [x] Create an on-demand Compose stack pinned to Misskey 2026.6.0 with independent PostgreSQL and Redis services, persistent test volumes, health checks, and an approximate aggregate 2.5 GiB memory ceiling.
@@ -266,15 +266,14 @@ Invariants:
 - [x] Document start, stop, backup, reset, log inspection, and teardown commands for the test stack.
 - [x] Commit the local Misskey interoperability environment.
 
-**Test deployment status (2026-07-21):** The `cfbbs-test` Worker is deployed
+**Test deployment status (2026-07-22):** The `cfbbs-test` Worker is deployed
 and its remote D1 migrations are current. Its health, NodeInfo, WebFinger, and
 local Actor endpoints are publicly reachable over HTTPS. The Misskey origin is
-healthy behind its exact-match Nginx vhost, but its proxied hostname currently
-fails the Cloudflare edge TLS handshake. `misskey-test.s.lukelzlz.top` is a
-second-level wildcard hostname and is not covered by the zone's existing
-Universal SSL certificate. Finish the remaining interoperability checks only
-after Cloudflare serves a valid certificate for that hostname (or the test
-instance is moved to a covered hostname).
+healthy behind its 宝塔-managed exact-match Nginx vhost at
+`misskey-test.lukelzlz.top`, which holds a DNS-validated Let's Encrypt
+certificate. The remaining interoperability checks are in progress; the
+Cloudflare AI Labyrinth safety feature must not intercept signed ActivityPub
+inbox POSTs before they reach the Worker.
 
 **Milestone 3 acceptance:** The real test Worker and pinned Misskey instance complete the interoperability matrix over HTTPS. Queue failure and recovery are observable, moderation controls work, and private content is absent from all federation surfaces.
 
@@ -308,7 +307,7 @@ Expected result: Wrangler is authenticated to the intended account, test resourc
 ## Assumptions and External Prerequisites
 
 - The test deployment remains separate from any future production deployment.
-- The user supplied `cfbbs-test.s.lukelzlz.top` and `misskey-test.s.lukelzlz.top` for Task 12.
+- The user supplied `cfbbs-test.s.lukelzlz.top` and `misskey-test.lukelzlz.top` for Task 12.
 - The Cloudflare account supports Workers, D1, KV, and Queues.
 - The Cloudflare scaffold's supported React Router version is accepted and pinned by `pnpm-lock.yaml`; do not force an unsupported React Router major.
 - Misskey runs only on demand because this server already hosts other services.
