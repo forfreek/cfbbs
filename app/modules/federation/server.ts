@@ -941,6 +941,13 @@ export async function createWorkerFederation(
           documentLoaderFactory: () =>
             createTestRemoteDocumentLoader(environment),
           contextLoaderFactory: () => createTestContextDocumentLoader(),
+          // Misskey's public actor endpoint is all that the test instance
+          // needs to resolve while validating inbound HTTP signatures.  Use
+          // the same bounded HTTPS-only loader for that lookup so its
+          // temporary redirect is followed without weakening production's
+          // authenticated-loader policy.
+          authenticatedDocumentLoaderFactory: () =>
+            createBoundedRemoteDocumentLoader(),
         }
       : {}),
   });
