@@ -924,7 +924,13 @@ builder
 
 builder
   .setInboxListeners("/users/{identifier}/inbox", "/inbox")
-  .withIdempotency("global")
+  // Misskey reuses a stable Undo Follow activity id across follow cycles.
+  // Skip Fedify-level idempotency for Undo so later unfollows still reach
+  // processInboundUndo; application receipts still protect other activities.
+  .withIdempotency(async (_context, activity) => {
+    if (activity instanceof Undo) return null;
+    return activity.id?.href ?? null;
+  })
   .onUnverifiedActivity(async (context, _activity, reason) => {
     console.warn("CFBBS unverified inbox activity", reason);
     await recordTestUnverifiedInboxActivity(context, reason);
