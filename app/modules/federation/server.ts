@@ -271,6 +271,18 @@ async function loadLocalActorForInboundFollow(
     .first<LocalActor>();
 }
 
+async function loadLocalActorFollowedByRemote(
+  database: D1Database,
+  followerActorUri: string,
+) {
+  return database
+    .prepare(
+      "SELECT federation_actors.id, profiles.handle FROM federation_follows INNER JOIN federation_actors ON federation_actors.id = federation_follows.following_actor_id INNER JOIN profiles ON profiles.user_id = federation_actors.id WHERE federation_follows.follower_actor_id = ? AND federation_follows.state = 'accepted' AND federation_actors.is_local = 1 LIMIT 1",
+    )
+    .bind(followerActorUri)
+    .first<LocalActor>();
+}
+
 async function loadLocalActorForOutboundFollow(
   database: D1Database,
   followActivityId: string,
@@ -504,7 +516,8 @@ export async function processInboundUndo(
       context.data.DB,
       followActivityId,
       actorUri,
-    ));
+    )) ??
+    (await loadLocalActorFollowedByRemote(context.data.DB, actorUri));
   const claimed = await claimInboxActivity(context.data.DB, {
     activityId,
     actorUri,

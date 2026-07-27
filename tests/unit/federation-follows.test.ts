@@ -292,4 +292,36 @@ describe("accepted remote follows", () => {
     expect(batches).toHaveLength(1);
     expect(batches[0]).toHaveLength(3);
   });
+
+  it("falls back to the follower pair when the Undo Follow id does not match", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const database = {
+      prepare(sql: string) {
+        return {
+          bind(...params: unknown[]) {
+            statements.push({ sql, params });
+            return {
+              run: async () => ({
+                meta: {
+                  changes: sql.includes("follow_activity_id = ?") ? 0 : 1,
+                },
+              }),
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await expect(
+      undoRemoteFollow(database, {
+        followActivityId: "https://remote.example/follows/derived-id",
+        followerActorUri: "https://remote.example/users/bob",
+        localActorId: "local-1",
+      }),
+    ).resolves.toBe(true);
+    expect(statements).toHaveLength(2);
+    expect(statements[1]?.sql).toContain(
+      "follower_actor_id = ? AND following_actor_id = ? AND state = 'accepted'",
+    );
+  });
 });

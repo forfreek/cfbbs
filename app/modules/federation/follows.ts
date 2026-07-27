@@ -339,23 +339,38 @@ export async function undoOutboundFollow(
 export async function undoRemoteFollow(
   database: D1Database,
   input: {
-    followActivityId: string;
+    followActivityId?: string | null;
     followerActorUri: string;
     localActorId: string;
   },
 ) {
-  const result = await database
+  const now = new Date().toISOString();
+  // Prefer the exact Follow activity id when the remote side reuses it.
+  // Misskey Undo often embeds a derived Follow id that does not match the
+  // original Follow activity we stored, so fall back to the unique
+  // follower/following pair for accepted inbound relationships.
+  if (input.followActivityId) {
+    const exact = await database
+      .prepare(
+        "UPDATE federation_follows SET state = 'undone', updated_at = ? WHERE follow_activity_id = ? AND follower_actor_id = ? AND following_actor_id = ? AND state = 'accepted'",
+      )
+      .bind(
+        now,
+        input.followActivityId,
+        input.followerActorUri,
+        input.localActorId,
+      )
+      .run();
+    if (exact.meta.changes === 1) return true;
+  }
+
+  const fallback = await database
     .prepare(
-      "UPDATE federation_follows SET state = 'undone', updated_at = ? WHERE follow_activity_id = ? AND follower_actor_id = ? AND following_actor_id = ? AND state = 'accepted'",
+      "UPDATE federation_follows SET state = 'undone', updated_at = ? WHERE follower_actor_id = ? AND following_actor_id = ? AND state = 'accepted'",
     )
-    .bind(
-      new Date().toISOString(),
-      input.followActivityId,
-      input.followerActorUri,
-      input.localActorId,
-    )
+    .bind(now, input.followerActorUri, input.localActorId)
     .run();
-  return result.meta.changes === 1;
+  return fallback.meta.changes === 1;
 }
 
 export async function settleOutboundFollow(
