@@ -10,8 +10,9 @@ import {
 
 type CapturedStatement = { sql: string; params: unknown[] };
 
-function receiptDatabase(changes: number) {
+function receiptDatabase(changes: number | ReadonlyArray<number>) {
   const statements: CapturedStatement[] = [];
+  const changePlan = Array.isArray(changes) ? [...changes] : null;
   return {
     database: {
       prepare(sql: string) {
@@ -21,7 +22,11 @@ function receiptDatabase(changes: number) {
             statements.push(statement);
             return {
               async run() {
-                return { meta: { changes } };
+                const next =
+                  changePlan === null
+                    ? (changes as number)
+                    : (changePlan.shift() ?? 0);
+                return { meta: { changes: next } };
               },
             };
           },
@@ -61,11 +66,26 @@ describe("federation inbox receipts", () => {
     );
   });
 
-  it("treats an existing receipt as a replay without changing its state", async () => {
-    const { database, statements } = receiptDatabase(0);
+  it("treats an existing non-reclaimable receipt as a replay", async () => {
+    const { database, statements } = receiptDatabase([0, 0]);
 
     await expect(claimInboxActivity(database, activity)).resolves.toBe(false);
-    expect(statements).toHaveLength(1);
+    expect(statements).toHaveLength(2);
+    expect(statements[1]?.sql).toContain("state IN (?)");
+    expect(statements[1]?.params.at(-1)).toBe("rejected");
+  });
+
+  it("reclaims a rejected receipt for a later delivery of the same activity", async () => {
+    const { database, statements } = receiptDatabase([0, 1]);
+
+    await expect(
+      claimInboxActivity(database, activity, {
+        reclaimStates: ["rejected", "processed"],
+      }),
+    ).resolves.toBe(true);
+    expect(statements[0]?.sql).toContain("ON CONFLICT(activity_id) DO NOTHING");
+    expect(statements[1]?.sql).toContain("state IN (?, ?)");
+    expect(statements[1]?.params.slice(-2)).toEqual(["rejected", "processed"]);
   });
 
   it("allows a received activity to be finalized exactly once", async () => {

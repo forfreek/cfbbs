@@ -518,10 +518,16 @@ export async function processInboundUndo(
       actorUri,
     )) ??
     (await loadLocalActorFollowedByRemote(context.data.DB, actorUri));
-  const claimed = await claimInboxActivity(context.data.DB, {
-    activityId,
-    actorUri,
-  });
+  // Misskey addresses Undo Follow with a stable per-pair activity id, so a
+  // later unfollow must be allowed to reclaim the previous receipt.
+  const claimed = await claimInboxActivity(
+    context.data.DB,
+    {
+      activityId,
+      actorUri,
+    },
+    { reclaimStates: ["rejected", "processed"] },
+  );
   if (!claimed) return;
 
   try {

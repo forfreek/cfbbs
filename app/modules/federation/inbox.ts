@@ -5,6 +5,12 @@ export type InboxActivity = {
   actorUri: string;
 };
 
+export type ClaimInboxActivityOptions = {
+  // Misskey reuses deterministic Undo activity IDs across follow cycles.
+  // Allow reclaiming terminal receipts so a later unfollow is not dropped.
+  reclaimStates?: ReadonlyArray<"rejected" | "processed">;
+};
+
 export function validateInboxActivity(input: InboxActivity) {
   if (!isSafeRemoteUrl(input.activityId)) {
     return {
@@ -24,18 +30,30 @@ export function validateInboxActivity(input: InboxActivity) {
 export async function claimInboxActivity(
   database: D1Database,
   input: InboxActivity,
+  options: ClaimInboxActivityOptions = {},
 ) {
   const validation = validateInboxActivity(input);
   if (!validation.ok) throw new Error(validation.message);
 
   const now = new Date().toISOString();
-  const result = await database
+  const reclaimStates = options.reclaimStates ?? ["rejected"];
+  const insert = await database
     .prepare(
       "INSERT INTO federation_inbox_receipts (activity_id, actor_uri, received_at, processed_at, state, failure_reason) VALUES (?, ?, ?, NULL, 'received', NULL) ON CONFLICT(activity_id) DO NOTHING",
     )
     .bind(input.activityId, input.actorUri, now)
     .run();
-  return result.meta.changes === 1;
+  if (insert.meta.changes === 1) return true;
+  if (reclaimStates.length === 0) return false;
+
+  const placeholders = reclaimStates.map(() => "?").join(", ");
+  const reclaim = await database
+    .prepare(
+      `UPDATE federation_inbox_receipts SET actor_uri = ?, received_at = ?, processed_at = NULL, state = 'received', failure_reason = NULL WHERE activity_id = ? AND state IN (${placeholders})`,
+    )
+    .bind(input.actorUri, now, input.activityId, ...reclaimStates)
+    .run();
+  return reclaim.meta.changes === 1;
 }
 
 export async function completeInboxActivity(

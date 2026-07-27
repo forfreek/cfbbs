@@ -2,14 +2,35 @@ import SearchIcon from "lucide-react/dist/esm/icons/search.mjs";
 import { Form, Link, data, redirect, useActionData } from "react-router";
 
 import type { Route } from "./+types/search";
-import { createOutboundFollow } from "@/modules/federation/follows";
+import {
+  createOutboundFollow,
+  undoOutboundFollow,
+} from "@/modules/federation/follows";
 import {
   lookupRemoteResource,
   parseRemoteLookupTarget,
   resolveRemoteActorForFollow,
+  type ResolvedRemoteActor,
 } from "@/modules/federation/remote-lookup";
 import { searchLocalPosts } from "@/modules/forum/search/service";
 import { getSession } from "@/modules/identity/auth.server";
+
+type ActiveOutboundFollow = {
+  followActivityId: string;
+};
+
+async function loadActiveOutboundFollow(
+  database: D1Database,
+  localActorId: string,
+  remoteActorUri: string,
+) {
+  return database
+    .prepare(
+      "SELECT follow_activity_id AS followActivityId FROM federation_follows WHERE follower_actor_id = ? AND following_actor_id = ? AND state IN ('pending', 'accepted') LIMIT 1",
+    )
+    .bind(localActorId, remoteActorUri)
+    .first<ActiveOutboundFollow>();
+}
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const query = new URL(request.url).searchParams.get("q") ?? "";
@@ -18,12 +39,22 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (remoteTarget) {
     try {
       const remoteLookup = await lookupRemoteResource(remoteTarget);
+      let followingRemote = false;
+      if (session && remoteLookup.kind === "actor") {
+        const active = await loadActiveOutboundFollow(
+          context.cloudflare.env.DB,
+          session.user.id,
+          remoteLookup.url,
+        );
+        followingRemote = active !== null;
+      }
       return {
         query,
         results: [],
         remoteLookup,
         remoteLookupError: null,
         session,
+        followingRemote,
       };
     } catch {
       return {
@@ -32,6 +63,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         remoteLookup: null,
         remoteLookupError: "无法获取这个远端 ActivityPub 资源。",
         session,
+        followingRemote: false,
       };
     }
   }
@@ -42,7 +74,28 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     remoteLookup: null,
     remoteLookupError: null,
     session,
+    followingRemote: false,
   };
+}
+
+async function requireRemoteActor(
+  query: string,
+): Promise<
+  | { ok: true; following: ResolvedRemoteActor; query: string }
+  | { ok: false; response: Response }
+> {
+  const remoteTarget = parseRemoteLookupTarget(query);
+  if (!remoteTarget) {
+    return {
+      ok: false,
+      response: data(
+        { error: "请提供完整的远端 handle 或 HTTPS Actor URL。" },
+        { status: 400 },
+      ),
+    };
+  }
+  const following = await resolveRemoteActorForFollow(remoteTarget);
+  return { ok: true, following, query };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -52,16 +105,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const query = String(form.get("q") ?? "");
-  if (intent !== "follow-remote") {
+  if (intent !== "follow-remote" && intent !== "unfollow-remote") {
     return data({ error: "未知操作。" }, { status: 400 });
-  }
-
-  const remoteTarget = parseRemoteLookupTarget(query);
-  if (!remoteTarget) {
-    return data(
-      { error: "请提供完整的远端 handle 或 HTTPS Actor URL。" },
-      { status: 400 },
-    );
   }
 
   const username =
@@ -71,17 +116,46 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   try {
-    const following = await resolveRemoteActorForFollow(remoteTarget);
-    await createOutboundFollow(context.cloudflare.env.DB, {
-      eventId: crypto.randomUUID(),
-      localActorId: session.user.id,
-      localHandle: username,
-      origin: context.cloudflare.env.APP_ORIGIN,
-      following,
-    });
+    const resolved = await requireRemoteActor(query);
+    if (!resolved.ok) return resolved.response;
+    const { following } = resolved;
+
+    if (intent === "follow-remote") {
+      await createOutboundFollow(context.cloudflare.env.DB, {
+        eventId: crypto.randomUUID(),
+        localActorId: session.user.id,
+        localHandle: username,
+        origin: context.cloudflare.env.APP_ORIGIN,
+        following,
+      });
+    } else {
+      const active = await loadActiveOutboundFollow(
+        context.cloudflare.env.DB,
+        session.user.id,
+        following.uri,
+      );
+      if (!active) {
+        return data({ error: "当前没有可取消的远端关注。" }, { status: 400 });
+      }
+      const undone = await undoOutboundFollow(context.cloudflare.env.DB, {
+        eventId: crypto.randomUUID(),
+        localActorId: session.user.id,
+        localHandle: username,
+        origin: context.cloudflare.env.APP_ORIGIN,
+        following,
+        followActivityId: active.followActivityId,
+      });
+      if (!undone) {
+        return data({ error: "取消关注失败。" }, { status: 400 });
+      }
+    }
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "关注远端账号失败。";
+      error instanceof Error
+        ? error.message
+        : intent === "unfollow-remote"
+          ? "取消关注远端账号失败。"
+          : "关注远端账号失败。";
     return data({ error: message }, { status: 400 });
   }
 
@@ -141,37 +215,41 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
           <a
             className="mt-3 inline-block text-sm text-blue-700 hover:underline"
             href={loaderData.remoteLookup.url}
-            rel="noreferrer noopener"
-            target="_blank"
           >
-            在远端打开
+            {loaderData.remoteLookup.url}
           </a>
           {canFollowRemote ? (
             <Form method="post" className="mt-4">
-              <input type="hidden" name="intent" value="follow-remote" />
               <input type="hidden" name="q" value={loaderData.query} />
-              <button className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
-                关注此账号
+              <input
+                type="hidden"
+                name="intent"
+                value={
+                  loaderData.followingRemote
+                    ? "unfollow-remote"
+                    : "follow-remote"
+                }
+              />
+              <button className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50">
+                {loaderData.followingRemote ? "取消关注" : "关注这个远端账号"}
               </button>
             </Form>
           ) : null}
         </section>
-      ) : loaderData.remoteLookupError ? (
-        <p role="alert" className="mt-8 text-sm text-amber-700">
+      ) : null}
+      {loaderData.remoteLookupError ? (
+        <p role="alert" className="mt-8 text-sm text-red-700">
           {loaderData.remoteLookupError}
         </p>
-      ) : searched ? (
-        <section className="mt-8" aria-live="polite">
-          <h2 className="text-sm text-slate-500">
-            {loaderData.results.length > 0
-              ? `找到 ${loaderData.results.length} 条结果`
-              : "没有匹配的公开内容"}
-          </h2>
-          <ol className="mt-4 divide-y border-y">
+      ) : null}
+      {loaderData.results.length > 0 ? (
+        <section className="mt-8">
+          <h2 className="text-sm font-medium text-slate-500">本地结果</h2>
+          <ol className="mt-4 space-y-4">
             {loaderData.results.map((result) => (
-              <li key={result.postId} className="py-4">
+              <li key={result.postId} className="rounded-lg border p-4">
                 <Link
-                  className="font-medium text-slate-900 hover:text-blue-700 hover:underline"
+                  className="font-medium text-blue-700 hover:underline"
                   to={`/threads/${result.threadId}#post-${result.postId}`}
                 >
                   {result.title}
@@ -189,11 +267,15 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
             ))}
           </ol>
         </section>
-      ) : (
+      ) : searched &&
+        !loaderData.remoteLookup &&
+        !loaderData.remoteLookupError ? (
+        <p className="mt-8 text-sm text-slate-500">没有找到匹配的本地内容。</p>
+      ) : !searched ? (
         <p className="mt-8 text-sm text-slate-500">
           输入关键词以查找公开的本地讨论。
         </p>
-      )}
+      ) : null}
     </main>
   );
 }
