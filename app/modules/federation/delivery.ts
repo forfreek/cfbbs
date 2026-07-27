@@ -41,6 +41,9 @@ export async function signedActivityDelivery(input: SignedActivityDelivery) {
     },
     body,
   });
+  // Misskey and the broader ActivityPub ecosystem still verify the
+  // draft-cavage HTTP Signatures profile.  RFC 9421 signatures are rejected
+  // as unauthorized (401), so outbound delivery uses the draft profile.
   return signRequest(
     request,
     await importFederationPrivateKey(
@@ -48,6 +51,6 @@ export async function signedActivityDelivery(input: SignedActivityDelivery) {
       input.encryptionSecret,
     ),
     new URL(`${input.actorUri}#main-key`),
-    { spec: "rfc9421" },
+    { spec: "draft-cavage-http-signatures-12" },
   );
 }

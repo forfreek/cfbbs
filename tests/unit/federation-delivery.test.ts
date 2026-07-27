@@ -23,8 +23,10 @@ describe("signed federation delivery", () => {
     expect(request.headers.get("content-type")).toBe(
       "application/activity+json",
     );
-    expect(request.headers.get("signature-input")).toContain("main-key");
-    expect(request.headers.get("signature")).toBeTruthy();
+    expect(request.headers.get("signature")).toContain("keyId=");
+    expect(request.headers.get("signature")).toContain("main-key");
+    expect(request.headers.get("digest")).toMatch(/^SHA-256=/);
+    expect(request.headers.get("date")).toBeTruthy();
   });
 
   it("rejects unsafe target URLs before attempting delivery", async () => {

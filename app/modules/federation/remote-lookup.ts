@@ -164,3 +164,107 @@ export async function lookupRemoteResource(
   const document = await fetchActivityDocument(resourceUrl);
   return remoteLookupResult(document.document, document.documentUrl);
 }
+
+export type ResolvedRemoteActor = {
+  uri: string;
+  inboxUrl: string;
+  sharedInboxUrl: string | null;
+  publicKeyPem: string;
+  name: string;
+};
+
+function firstString(value: unknown, maximumLength = 2_000): string | null {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized ? normalized.slice(0, maximumLength) : null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested: string | null = firstString(item, maximumLength);
+      if (nested) return nested;
+    }
+  }
+  if (isRecord(value) && "id" in value) {
+    return firstString(value.id, maximumLength);
+  }
+  if (isRecord(value) && "href" in value) {
+    return firstString(value.href, maximumLength);
+  }
+  return null;
+}
+
+function publicKeyPemFromActor(document: Record<string, unknown>) {
+  const publicKey = document.publicKey;
+  const candidates = Array.isArray(publicKey)
+    ? publicKey
+    : publicKey
+      ? [publicKey]
+      : [];
+  for (const candidate of candidates) {
+    if (!isRecord(candidate)) continue;
+    const pem = firstString(candidate.publicKeyPem, 8_000);
+    if (pem?.includes("BEGIN PUBLIC KEY")) return pem;
+  }
+  return null;
+}
+
+export function remoteActorFromDocument(
+  document: unknown,
+  documentUrl: string,
+): ResolvedRemoteActor {
+  if (!isRecord(document)) {
+    throw new Error("Remote actor document must be an object.");
+  }
+  const types = activityTypes(document.type);
+  if (!types.some((candidate) => actorTypes.has(candidate))) {
+    throw new Error("Remote document is not an ActivityPub actor.");
+  }
+  const id = firstString(document.id, 2_000);
+  const uri = id && isSafeRemoteUrl(id) ? id : documentUrl;
+  if (!isSafeRemoteUrl(uri)) {
+    throw new Error("Remote actor URI must be a public HTTPS URL.");
+  }
+  const inboxUrl = firstString(document.inbox, 2_000);
+  if (!inboxUrl || !isSafeRemoteUrl(inboxUrl)) {
+    throw new Error("Remote actor has no usable inbox.");
+  }
+  const endpoints = isRecord(document.endpoints) ? document.endpoints : null;
+  const sharedInbox = endpoints
+    ? firstString(endpoints.sharedInbox, 2_000)
+    : null;
+  if (sharedInbox !== null && !isSafeRemoteUrl(sharedInbox)) {
+    throw new Error("Remote actor shared inbox must be a public HTTPS URL.");
+  }
+  const publicKeyPem = publicKeyPemFromActor(document);
+  if (!publicKeyPem) {
+    throw new Error("Remote actor has no usable public key.");
+  }
+  const name =
+    stringValue(document.name) ??
+    stringValue(document.preferredUsername) ??
+    uri;
+  return {
+    uri,
+    inboxUrl,
+    sharedInboxUrl: sharedInbox,
+    publicKeyPem,
+    name,
+  };
+}
+
+export async function resolveRemoteActorForFollow(
+  target: RemoteLookupTarget,
+  fetcher: Fetcher = fetch,
+): Promise<ResolvedRemoteActor> {
+  const resourceUrl =
+    target.kind === "handle"
+      ? await actorUrlFromWebFinger(target, fetcher)
+      : target.url;
+  const fetchActivityDocument = createBoundedRemoteJsonFetcher(
+    'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
+    isActivityStreamsContentType,
+    fetcher,
+  );
+  const document = await fetchActivityDocument(resourceUrl);
+  return remoteActorFromDocument(document.document, document.documentUrl);
+}

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   lookupRemoteResource,
   parseRemoteLookupTarget,
+  remoteActorFromDocument,
+  resolveRemoteActorForFollow,
 } from "@/modules/federation/remote-lookup";
 
 describe("remote lookup", () => {
@@ -84,5 +86,59 @@ describe("remote lookup", () => {
           ),
       ),
     ).rejects.toThrow("does not match the requested handle");
+  });
+
+  it("extracts follow delivery fields from a remote actor document", () => {
+    expect(
+      remoteActorFromDocument(
+        {
+          id: "https://remote.example/users/bob",
+          type: "Person",
+          preferredUsername: "bob",
+          inbox: "https://remote.example/users/bob/inbox",
+          endpoints: { sharedInbox: "https://remote.example/inbox" },
+          publicKey: {
+            id: "https://remote.example/users/bob#main-key",
+            publicKeyPem:
+              "-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n",
+          },
+        },
+        "https://remote.example/users/bob",
+      ),
+    ).toEqual({
+      uri: "https://remote.example/users/bob",
+      inboxUrl: "https://remote.example/users/bob/inbox",
+      sharedInboxUrl: "https://remote.example/inbox",
+      publicKeyPem:
+        "-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----",
+      name: "bob",
+    });
+  });
+
+  it("resolves a remote actor for outbound follow delivery", async () => {
+    const target = parseRemoteLookupTarget("https://remote.example/users/bob");
+    if (!target) throw new Error("Expected a remote URL target.");
+    await expect(
+      resolveRemoteActorForFollow(target, async () => {
+        return new Response(
+          JSON.stringify({
+            id: "https://remote.example/users/bob",
+            type: "Person",
+            preferredUsername: "bob",
+            inbox: "https://remote.example/users/bob/inbox",
+            publicKey: {
+              publicKeyPem:
+                "-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n",
+            },
+          }),
+          { headers: { "content-type": "application/activity+json" } },
+        );
+      }),
+    ).resolves.toMatchObject({
+      uri: "https://remote.example/users/bob",
+      inboxUrl: "https://remote.example/users/bob/inbox",
+      sharedInboxUrl: null,
+      name: "bob",
+    });
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   processFederationQueue,
+  unwrapFedifyQueueMessage,
   type OutboxEventDelivery,
 } from "@/modules/jobs/federation-queue";
 
@@ -87,6 +88,19 @@ describe("federation queue consumer", () => {
     );
 
     expect(results).toEqual({ acknowledged: 0, retried: 1 });
+  });
+
+
+  it("unwraps Cloudflare Fedify queue envelopes before type detection", () => {
+    expect(
+      unwrapFedifyQueueMessage({
+        __fedify_ordering_key__: "actor",
+        __fedify_payload__: { type: "inbox", id: "task-1" },
+      }),
+    ).toEqual({ type: "inbox", id: "task-1" });
+    expect(unwrapFedifyQueueMessage({ type: "outbox" })).toEqual({
+      type: "outbox",
+    });
   });
 
   it("fails the batch before processing messages without an encryption secret", async () => {

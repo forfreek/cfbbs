@@ -31,6 +31,21 @@ function getEncryptionSecret(environment: FederationQueueEnvironment) {
   return encryptionSecret;
 }
 
+// Cloudflare's Fedify queue adapter wraps every task as
+// { __fedify_ordering_key__, __fedify_payload__ }.  Detect the inner Fedify
+// task type after that unwrap; otherwise inbox/outbox activities are acked
+// and dropped before processQueuedTask can run.
+export function unwrapFedifyQueueMessage(value: unknown): unknown {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "__fedify_payload__" in value
+  ) {
+    return (value as { __fedify_payload__: unknown }).__fedify_payload__;
+  }
+  return value;
+}
+
 export async function processFederationQueue(
   batch: QueueBatch,
   environment: FederationQueueEnvironment,
@@ -60,7 +75,9 @@ export async function processFederationQueue(
         }
         return;
       }
-      if (!isFedifyQueueMessage(message.body)) {
+
+      const fedifyBody = unwrapFedifyQueueMessage(message.body);
+      if (!isFedifyQueueMessage(fedifyBody)) {
         message.ack();
         return;
       }

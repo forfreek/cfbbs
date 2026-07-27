@@ -1,35 +1,98 @@
 import SearchIcon from "lucide-react/dist/esm/icons/search.mjs";
-import { Form, Link } from "react-router";
+import { Form, Link, data, redirect, useActionData } from "react-router";
 
 import type { Route } from "./+types/search";
+import { createOutboundFollow } from "@/modules/federation/follows";
 import {
   lookupRemoteResource,
   parseRemoteLookupTarget,
+  resolveRemoteActorForFollow,
 } from "@/modules/federation/remote-lookup";
 import { searchLocalPosts } from "@/modules/forum/search/service";
+import { getSession } from "@/modules/identity/auth.server";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const query = new URL(request.url).searchParams.get("q") ?? "";
+  const session = await getSession(request, context.cloudflare.env);
   const remoteTarget = parseRemoteLookupTarget(query);
   if (remoteTarget) {
     try {
       const remoteLookup = await lookupRemoteResource(remoteTarget);
-      return { query, results: [], remoteLookup, remoteLookupError: null };
+      return {
+        query,
+        results: [],
+        remoteLookup,
+        remoteLookupError: null,
+        session,
+      };
     } catch {
       return {
         query,
         results: [],
         remoteLookup: null,
         remoteLookupError: "无法获取这个远端 ActivityPub 资源。",
+        session,
       };
     }
   }
   const results = await searchLocalPosts(context.cloudflare.env.DB, query);
-  return { query, results, remoteLookup: null, remoteLookupError: null };
+  return {
+    query,
+    results,
+    remoteLookup: null,
+    remoteLookupError: null,
+    session,
+  };
+}
+
+export async function action({ request, context }: Route.ActionArgs) {
+  const session = await getSession(request, context.cloudflare.env);
+  if (!session) throw redirect("/auth/login");
+
+  const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const query = String(form.get("q") ?? "");
+  if (intent !== "follow-remote") {
+    return data({ error: "未知操作。" }, { status: 400 });
+  }
+
+  const remoteTarget = parseRemoteLookupTarget(query);
+  if (!remoteTarget) {
+    return data(
+      { error: "请提供完整的远端 handle 或 HTTPS Actor URL。" },
+      { status: 400 },
+    );
+  }
+
+  const username =
+    typeof session.user.username === "string" ? session.user.username : null;
+  if (!username) {
+    return data({ error: "当前登录账号缺少用户名。" }, { status: 400 });
+  }
+
+  try {
+    const following = await resolveRemoteActorForFollow(remoteTarget);
+    await createOutboundFollow(context.cloudflare.env.DB, {
+      eventId: crypto.randomUUID(),
+      localActorId: session.user.id,
+      localHandle: username,
+      origin: context.cloudflare.env.APP_ORIGIN,
+      following,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "关注远端账号失败。";
+    return data({ error: message }, { status: 400 });
+  }
+
+  return redirect(`/search?q=${encodeURIComponent(query)}`);
 }
 
 export default function SearchPage({ loaderData }: Route.ComponentProps) {
+  const actionData = useActionData<typeof action>();
   const searched = loaderData.query.trim().length > 0;
+  const canFollowRemote =
+    loaderData.session !== null && loaderData.remoteLookup?.kind === "actor";
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <div className="flex items-baseline justify-between gap-4">
@@ -60,6 +123,11 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
           搜索
         </button>
       </Form>
+      {actionData?.error ? (
+        <p role="alert" className="mt-4 text-sm text-red-700">
+          {actionData.error}
+        </p>
+      ) : null}
       {loaderData.remoteLookup ? (
         <section className="mt-8 rounded-lg border p-5" aria-live="polite">
           <p className="text-sm text-slate-500">远端 ActivityPub 资源</p>
@@ -78,6 +146,15 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
           >
             在远端打开
           </a>
+          {canFollowRemote ? (
+            <Form method="post" className="mt-4">
+              <input type="hidden" name="intent" value="follow-remote" />
+              <input type="hidden" name="q" value={loaderData.query} />
+              <button className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
+                关注此账号
+              </button>
+            </Form>
+          ) : null}
         </section>
       ) : loaderData.remoteLookupError ? (
         <p role="alert" className="mt-8 text-sm text-amber-700">
