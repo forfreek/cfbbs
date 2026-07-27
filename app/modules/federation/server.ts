@@ -1,4 +1,4 @@
-import { WorkersKvStore, WorkersMessageQueue } from "@fedify/cfworkers";
+import { WorkersMessageQueue } from "@fedify/cfworkers";
 import {
   createFederationBuilder,
   type Federation,
@@ -42,6 +42,7 @@ import {
 import { recordRemoteLike, undoRemoteLike } from "./likes";
 import { isRemoteActorQuarantined } from "@/modules/moderation/remote-quarantine";
 import { isSafeRemoteUrl } from "./remote-url";
+import { createFederationKvStore } from "./kv";
 import { createBoundedRemoteDocumentLoader } from "./remote-fetch";
 import { nodeInfoDocument } from "./nodeinfo";
 import {
@@ -951,7 +952,7 @@ export async function createWorkerFederation(
     environment.FEDIFY_ALLOW_PRIVATE_ADDRESS === "true";
 
   return builder.build({
-    kv: new WorkersKvStore(environment.FEDIFY_KV),
+    kv: createFederationKvStore(environment.FEDIFY_KV),
     queue: new WorkersMessageQueue(environment.FEDERATION_QUEUE, {
       orderingKv: environment.FEDIFY_KV,
     }),
