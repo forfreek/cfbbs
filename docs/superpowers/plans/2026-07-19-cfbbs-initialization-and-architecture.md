@@ -260,20 +260,20 @@ Invariants:
 - [x] Deploy the `test` Worker and apply test D1 migrations before enabling public federation.
 - [x] Create an on-demand Compose stack pinned to Misskey 2026.6.0 with independent PostgreSQL and Redis services, persistent test volumes, health checks, and an approximate aggregate 2.5 GiB memory ceiling.
 - [x] Configure one exact-match HTTPS Nginx vhost for Misskey without modifying unrelated virtual hosts.
-- [ ] Verify WebFinger and Actor discovery in both directions before creating test follows.
-- [ ] Exercise bidirectional follow/unfollow, BBS topic delivery, Misskey reply, BBS reply, bidirectional likes, update, delete, instance block, and delivery recovery after stopping Misskey.
-- [ ] Verify private-board objects return no ActivityPub representation and never appear in Worker delivery logs or Misskey.
+- [x] Verify WebFinger and Actor discovery in both directions before creating test follows.
+- [x] Exercise bidirectional follow/unfollow, BBS topic delivery, Misskey reply, BBS reply, bidirectional likes, update, delete, instance block, and delivery recovery after stopping Misskey.
+- [x] Verify private-board objects return no ActivityPub representation and never appear in Worker delivery logs or Misskey.
 - [x] Document start, stop, backup, reset, log inspection, and teardown commands for the test stack.
 - [x] Commit the local Misskey interoperability environment.
 
-**Test deployment status (2026-07-22):** The `cfbbs-test` Worker is deployed
-and its remote D1 migrations are current. Its health, NodeInfo, WebFinger, and
-local Actor endpoints are publicly reachable over HTTPS. The Misskey origin is
-healthy behind its 宝塔-managed exact-match Nginx vhost at
-`misskey-test.lukelzlz.top`, which holds a DNS-validated Let's Encrypt
-certificate. The remaining interoperability checks are in progress; the
-Cloudflare AI Labyrinth safety feature must not intercept signed ActivityPub
-inbox POSTs before they reach the Worker.
+**Test deployment status (2026-07-27):** The `cfbbs-test` Worker and pinned
+Misskey test stack completed the interoperability matrix over HTTPS. Verified
+paths include bidirectional WebFinger/Actor discovery, follow/Accept,
+Misskey→CFBBS unfollow (including reusable Undo activity ids), public Create/
+Update/Delete and likes both ways, private-board AP absence, instance block
+inbound rejection plus outbound fanout suppression, and delivery recovery after
+stopping Misskey (Create retried from 502 to delivered). Fedify queue
+idempotence now skips Undo activity keys so later unfollows are not dropped.
 
 **Milestone 3 acceptance:** The real test Worker and pinned Misskey instance complete the interoperability matrix over HTTPS. Queue failure and recovery are observable, moderation controls work, and private content is absent from all federation surfaces.
 
