@@ -1,3 +1,4 @@
+import { noteObject } from "./note";
 import { validateHandle } from "@/modules/identity/handle";
 
 export type PublicNotePost = {
@@ -56,3 +57,40 @@ export function isPublicNotePost(value: PublicNotePost) {
 }
 
 export const publicNoteQueries = { publicNoteQuery };
+
+export function publicNoteActivityResponse(
+  origin: string,
+  post: PublicNotePost,
+) {
+  return new Response(JSON.stringify(noteObject(origin, post)), {
+    headers: { "content-type": "application/activity+json" },
+  });
+}
+
+// Serve Note documents from the Worker edge before Fedify/React Router content
+// negotiation. Returning Response.json from the objects route loader still
+// falls through document rendering for activity+json Accept headers.
+export async function handlePublicNoteActivity(
+  request: Request,
+  database: D1Database,
+  origin: string,
+) {
+  const url = new URL(request.url);
+  const match = url.pathname.match(/^\/objects\/([^/]+)$/);
+  if (!match || !acceptsActivityStreams(request.headers.get("accept") ?? "")) {
+    return null;
+  }
+
+  let postId: string;
+  try {
+    postId = decodeURIComponent(match[1]);
+  } catch {
+    return new Response("Not found", { status: 404 });
+  }
+
+  const post = await loadPublicNote(database, postId);
+  if (!post || !isPublicNotePost(post)) {
+    return new Response("Not found", { status: 404 });
+  }
+  return publicNoteActivityResponse(origin, post);
+}

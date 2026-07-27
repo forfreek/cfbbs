@@ -2,6 +2,7 @@ import { createRequestHandler } from "react-router";
 
 import { createWorkerFederation } from "@/modules/federation/server";
 import { handlePublicActorCollectionActivity } from "@/modules/federation/collections";
+import { handlePublicNoteActivity } from "@/modules/federation/object";
 import { processFederationQueue } from "@/modules/jobs/federation-queue";
 import { enqueuePendingOutboxEvents } from "@/modules/jobs/federation-outbox";
 import { purgeExpiredRemoteObjects } from "@/modules/jobs/remote-retention";
@@ -72,6 +73,13 @@ export default {
       env.APP_ORIGIN,
     );
     if (collectionResponse) return collectionResponse;
+
+    const noteResponse = await handlePublicNoteActivity(
+      request,
+      env.DB,
+      env.APP_ORIGIN,
+    );
+    if (noteResponse) return noteResponse;
 
     const federation = await createWorkerFederation(env);
     try {

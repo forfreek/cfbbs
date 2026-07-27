@@ -5,8 +5,8 @@ import {
   acceptsActivityStreams,
   isPublicNotePost,
   loadPublicNote,
+  publicNoteActivityResponse,
 } from "@/modules/federation/object";
-import { noteObject } from "@/modules/federation/note";
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   const post = await loadPublicNote(
@@ -18,9 +18,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   }
 
   if (acceptsActivityStreams(request.headers.get("accept") ?? "")) {
-    return Response.json(noteObject(context.cloudflare.env.APP_ORIGIN, post), {
-      headers: { "content-type": "application/activity+json" },
-    });
+    return publicNoteActivityResponse(context.cloudflare.env.APP_ORIGIN, post);
   }
 
   return { post };

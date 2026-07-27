@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   acceptsActivityStreams,
+  handlePublicNoteActivity,
   isPublicNotePost,
   loadPublicNote,
   publicNoteQueries,
@@ -95,5 +96,59 @@ describe("public ActivityPub Note lookup", () => {
         parentPostId: null,
       }),
     ).toBe(false);
+  });
+
+  it("serves activity+json Notes from the Worker short-circuit", async () => {
+    const response = await handlePublicNoteActivity(
+      new Request("https://bbs.example.test/objects/post-1", {
+        headers: { accept: "application/activity+json" },
+      }),
+      {
+        prepare() {
+          return {
+            bind() {
+              return {
+                async first() {
+                  return {
+                    id: "post-1",
+                    authorHandle: "alice",
+                    html: "<p>Hello</p>",
+                    publishedAt: "2026-07-19T00:00:00.000Z",
+                    updatedAt: "2026-07-19T00:00:00.000Z",
+                    parentPostId: null,
+                  };
+                },
+              };
+            },
+          } as D1PreparedStatement;
+        },
+      } as D1Database,
+      "https://bbs.example.test",
+    );
+
+    expect(response).not.toBeNull();
+    expect(response?.headers.get("content-type")).toBe(
+      "application/activity+json",
+    );
+    await expect(response!.json()).resolves.toMatchObject({
+      type: "Note",
+      id: "https://bbs.example.test/objects/post-1",
+      attributedTo: "https://bbs.example.test/users/alice",
+    });
+  });
+
+  it("ignores non-ActivityStreams object requests", async () => {
+    const response = await handlePublicNoteActivity(
+      new Request("https://bbs.example.test/objects/post-1", {
+        headers: { accept: "text/html" },
+      }),
+      {
+        prepare() {
+          throw new Error("should not query D1");
+        },
+      } as unknown as D1Database,
+      "https://bbs.example.test",
+    );
+    expect(response).toBeNull();
   });
 });
