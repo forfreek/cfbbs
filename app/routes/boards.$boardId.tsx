@@ -16,6 +16,7 @@ import {
 } from "@/modules/forum/read.server";
 import { createThread } from "@/modules/forum/threads/service";
 import { getSession } from "@/modules/identity/auth.server";
+import { validateAttachmentIds } from "@/modules/media";
 
 async function boardPageData(request: Request, env: Env, boardId: string) {
   const cursorValue = new URL(request.url).searchParams.get("cursor");
@@ -86,6 +87,8 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     markdown: String(form.get("markdown") ?? ""),
   });
   if (!input.ok) return data({ error: input.message }, { status: 400 });
+  const attachments = validateAttachmentIds(form.getAll("attachmentIds"));
+  if (!attachments.ok) return data({ error: attachments.message }, { status: 400 });
 
   const threadId = crypto.randomUUID();
   await createThread(context.cloudflare.env.DB, {
@@ -96,6 +99,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     authorUserId: session.user.id,
     title: input.value.title,
     markdown: input.value.markdown,
+    attachmentIds: attachments.ids,
     visibility: boardIsPrivate ? "private" : "public",
     ...(!boardIsPrivate
       ? {

@@ -17,6 +17,15 @@ describe("post markdown", () => {
     expect(html).not.toMatch(/script|onerror|javascript:/i);
   });
 
+  it("allows local media and https images while stripping unsafe sources", () => {
+    const html = renderMarkdown(
+      "![ok](/media/abcdefghij) ![remote](https://cdn.example/a.png) ![bad](javascript:alert(1))",
+    );
+    expect(html).toContain('src="/media/abcdefghij"');
+    expect(html).toContain('src="https://cdn.example/a.png"');
+    expect(html).not.toMatch(/javascript:/i);
+  });
+
   it("uses the publication sanitizer for bounded Markdown previews", () => {
     expect(renderMarkdownPreview("[safe](https://example.test)")).toEqual({
       ok: true,

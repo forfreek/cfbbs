@@ -28,6 +28,7 @@ describe("post lifecycle contract", () => {
     expect(statements[0]?.sql).toContain("state = 'deleted'");
     expect(statements[1]?.sql).toContain("DELETE FROM local_posts_fts");
     expect(statements[1]?.params).toEqual(["post-1"]);
+    expect(statements[2]?.sql).toContain("DELETE FROM post_attachments");
   });
 
   it("updates a post, revision, local search index, and Update outbox event atomically", async () => {
@@ -38,6 +39,16 @@ describe("post lifecycle contract", () => {
           bind(...params: unknown[]) {
             if (sql.startsWith("SELECT handle FROM profiles")) {
               return { first: async () => ({ handle: "alice" }) };
+            }
+            if (
+              sql.trimStart().startsWith("SELECT") &&
+              (sql.includes("FROM media_objects") ||
+                sql.includes("FROM post_attachments"))
+            ) {
+              return {
+                first: async () => null,
+                all: async () => ({ results: [] }),
+              };
             }
             return { sql, params };
           },
@@ -96,6 +107,16 @@ describe("post lifecycle contract", () => {
             if (sql.startsWith("SELECT handle FROM profiles")) {
               return { first: async () => ({ handle: "alice" }) };
             }
+            if (
+              sql.trimStart().startsWith("SELECT") &&
+              (sql.includes("FROM media_objects") ||
+                sql.includes("FROM post_attachments"))
+            ) {
+              return {
+                first: async () => null,
+                all: async () => ({ results: [] }),
+              };
+            }
             return { sql, params };
           },
         };
@@ -120,7 +141,14 @@ describe("post lifecycle contract", () => {
       }),
     ).resolves.toBe(true);
     expect(
-      batches[0]?.some((statement) => statement.params.includes("Delete")),
+      batches[0]?.some((statement) =>
+        Array.isArray(statement.params) && statement.params.includes("Delete"),
+      ),
+    ).toBe(true);
+    expect(
+      batches[0]?.some((statement) =>
+        statement.sql.includes("DELETE FROM post_attachments"),
+      ),
     ).toBe(true);
     expect(
       batches[0]?.some((statement) =>

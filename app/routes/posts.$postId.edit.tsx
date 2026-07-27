@@ -14,6 +14,12 @@ import {
 import { canManageLocalPost } from "@/modules/forum/posts/ownership";
 import { loadForumBoard } from "@/modules/forum/read.server";
 import { getSession } from "@/modules/identity/auth.server";
+import {
+  loadPostAttachments,
+  mediaObjectPublicUrl,
+  replacePostAttachments,
+  validateAttachmentIds,
+} from "@/modules/media";
 import { authorizeDatabase } from "@/modules/permissions/authorization.server";
 
 async function editablePostData(request: Request, env: Env, postId: string) {
@@ -38,7 +44,21 @@ async function editablePostData(request: Request, env: Env, postId: string) {
   if (!canManageLocalPost(post, session.user.id, editAny.allowed)) {
     throw new Response("Forbidden", { status: 403 });
   }
-  return { session, post, isFirstPost: post.id === post.firstPostId };
+  const attachmentMap = await loadPostAttachments(env.DB, [post.id]);
+  const attachments = (attachmentMap.get(post.id) ?? []).map((item) => ({
+    id: item.id,
+    url: mediaObjectPublicUrl(env.APP_ORIGIN, item.id),
+    contentType: item.contentType,
+    originalFilename: item.originalFilename,
+    kind: item.kind,
+    byteSize: item.byteSize,
+  }));
+  return {
+    session,
+    post,
+    isFirstPost: post.id === post.firstPostId,
+    attachments,
+  };
 }
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
@@ -52,6 +72,14 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     params.postId ?? "",
   );
   const form = await request.formData();
+  const attachments = validateAttachmentIds(form.getAll("attachmentIds"));
+  if (!attachments.ok) return data({ error: attachments.message }, { status: 400 });
+  const linked = await replacePostAttachments(context.cloudflare.env.DB, {
+    postId: post.id,
+    authorUserId: post.authorUserId!,
+    attachmentIds: attachments.ids,
+  });
+  if (!linked.ok) return data({ error: linked.message }, { status: 400 });
   let markdown: string;
   let title: string | undefined;
   if (isFirstPost) {
@@ -80,6 +108,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     publishedAt: post.publishedAt,
     parentPostId: post.parentPostId,
     revisionId: crypto.randomUUID(),
+    attachmentIds: attachments.ids,
     ...(post.visibility === "public"
       ? {
           federation: {
@@ -95,7 +124,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
 export default function EditPost({ loaderData }: Route.ComponentProps) {
   const actionData = useActionData<typeof action>();
-  const { post, isFirstPost } = loaderData;
+  const { post, isFirstPost, attachments } = loaderData;
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="text-3xl font-semibold tracking-tight">
@@ -119,7 +148,11 @@ export default function EditPost({ loaderData }: Route.ComponentProps) {
             />
           </label>
         ) : null}
-        <MarkdownEditor defaultValue={post.markdown} rows={12} />
+        <MarkdownEditor
+          defaultValue={post.markdown}
+          initialAttachments={attachments}
+          rows={12}
+        />
         <div className="flex gap-4">
           <button className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
             保存修改

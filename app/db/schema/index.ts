@@ -577,3 +577,62 @@ export const federationOutboxEvents = sqliteTable(
     ),
   ],
 );
+
+export const mediaObjects = sqliteTable(
+  "media_objects",
+  {
+    id: text("id").primaryKey(),
+    uploaderUserId: text("uploader_user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    r2Key: text("r2_key").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    sha256: text("sha256").notNull(),
+    originalFilename: text("original_filename").notNull(),
+    kind: text("kind", { enum: ["image", "document"] }).notNull(),
+    createdAt: text("created_at").notNull(),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => [
+    uniqueIndex("media_objects_r2_key_unique").on(table.r2Key),
+    index("media_objects_uploader_index").on(table.uploaderUserId, table.createdAt),
+  ],
+);
+
+export const postAttachments = sqliteTable(
+  "post_attachments",
+  {
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id),
+    mediaId: text("media_id")
+      .notNull()
+      .references(() => mediaObjects.id),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.postId, table.mediaId] }),
+    index("post_attachments_media_index").on(table.mediaId),
+  ],
+);
+
+export const remoteObjectAttachments = sqliteTable(
+  "remote_object_attachments",
+  {
+    id: text("id").primaryKey(),
+    objectUri: text("object_uri").notNull(),
+    url: text("url").notNull(),
+    mediaType: text("media_type").notNull(),
+    name: text("name"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("remote_object_attachments_object_index").on(
+      table.objectUri,
+      table.sortOrder,
+    ),
+  ],
+);

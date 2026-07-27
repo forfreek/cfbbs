@@ -4,6 +4,10 @@ import {
   type FederationPostPublication,
 } from "@/modules/federation/outbox";
 import { noteId } from "@/modules/federation/identifiers";
+import {
+  loadOwnedMediaByIds,
+  postAttachmentInsertStatements,
+} from "@/modules/media";
 
 export type NewReply = {
   postId: string;
@@ -13,6 +17,7 @@ export type NewReply = {
   authorUserId: string;
   markdown: string;
   visibility: "public" | "private";
+  attachmentIds?: readonly string[];
   federation?: FederationPostPublication;
 };
 
@@ -27,6 +32,16 @@ export async function createReply(database: D1Database, input: NewReply) {
   if (thread.is_locked) throw new Error("Thread is locked.");
   const now = new Date().toISOString();
   const html = renderMarkdown(input.markdown);
+  const attachmentIds = input.attachmentIds ?? [];
+  if (attachmentIds.length > 0) {
+    const owned = await loadOwnedMediaByIds(database, {
+      authorUserId: input.authorUserId,
+      attachmentIds,
+    });
+    if (!owned) {
+      throw new Error("只能使用自己上传且未删除的附件。");
+    }
+  }
   const federationObjectId = input.federation
     ? noteId(input.federation.origin, input.postId)
     : null;
@@ -40,6 +55,7 @@ export async function createReply(database: D1Database, input: NewReply) {
     publishedAt: now,
     updatedAt: now,
     parentPostId: input.parentPostId,
+    attachmentIds,
     publication: input.federation,
   });
   await database.batch([
@@ -76,6 +92,11 @@ export async function createReply(database: D1Database, input: NewReply) {
         "UPDATE threads SET post_count = post_count + 1, last_activity_at = ?, updated_at = ? WHERE id = ?",
       )
       .bind(now, now, input.threadId),
+    ...postAttachmentInsertStatements(database, {
+      postId: input.postId,
+      attachmentIds,
+      createdAt: now,
+    }),
     ...(input.visibility === "public"
       ? [
           database

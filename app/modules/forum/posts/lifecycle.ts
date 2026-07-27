@@ -4,6 +4,7 @@ import {
   publicPostUpdateOutboxStatements,
   type FederationPostPublication,
 } from "@/modules/federation/outbox";
+import { softDeletePostMediaLinks } from "@/modules/media";
 
 export type MutableForumPost = {
   id: string;
@@ -44,6 +45,7 @@ export type LocalPostEdit = {
   publishedAt: string;
   parentPostId: string | null;
   revisionId: string;
+  attachmentIds?: readonly string[];
   federation?: FederationPostPublication;
 };
 
@@ -66,6 +68,7 @@ export async function editLocalPost(
     publishedAt: input.publishedAt,
     updatedAt: now,
     parentPostId: input.parentPostId,
+    attachmentIds: input.attachmentIds,
     publication: input.federation,
   });
   await database.batch([
@@ -145,6 +148,9 @@ export async function softDeleteLocalPost(
         "UPDATE threads SET post_count = CASE WHEN post_count > 0 THEN post_count - 1 ELSE 0 END, updated_at = ? WHERE id = ?",
       )
       .bind(now, input.threadId),
+    database
+      .prepare("DELETE FROM post_attachments WHERE post_id = ?")
+      .bind(input.postId),
     ...outbox,
   ]);
   return results[0]?.meta.changes === 1;
@@ -162,5 +168,6 @@ export async function softDeletePost(database: D1Database, postId: string) {
     .prepare("DELETE FROM local_posts_fts WHERE post_id = ?")
     .bind(postId)
     .run();
+  await softDeletePostMediaLinks(database, postId);
   return result.meta.changes > 0;
 }

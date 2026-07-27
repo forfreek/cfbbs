@@ -104,7 +104,7 @@ describe("public ActivityPub Note lookup", () => {
         headers: { accept: "application/activity+json" },
       }),
       {
-        prepare() {
+        prepare(sql: string) {
           return {
             bind() {
               return {
@@ -117,6 +117,9 @@ describe("public ActivityPub Note lookup", () => {
                     updatedAt: "2026-07-19T00:00:00.000Z",
                     parentPostId: null,
                   };
+                },
+                async all() {
+                  return { results: [] };
                 },
               };
             },

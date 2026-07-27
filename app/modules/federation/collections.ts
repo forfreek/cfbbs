@@ -1,6 +1,10 @@
 import { createNoteActivity } from "./outbox";
 import type { PublicPost } from "./note";
 import { validateHandle } from "@/modules/identity/handle";
+import {
+  loadPostAttachments,
+  mediaRecordsToNoteAttachments,
+} from "@/modules/media";
 
 export type PublicActorPost = PublicPost;
 export type ActorCollectionKind = "followers" | "following";
@@ -191,11 +195,13 @@ export async function handlePublicActorCollectionActivity(
 
   if (kind === "outbox") {
     const outbox = await loadPublicActorOutbox(database, owner.actorId);
-    return activityJsonResponse(
-      page
-        ? outboxPage(origin, owner.handle, outbox.posts)
-        : orderedCollection(origin, owner.handle, "outbox", outbox.total),
-    );
+    if (!page) {
+      return activityJsonResponse(
+        orderedCollection(origin, owner.handle, "outbox", outbox.total),
+      );
+    }
+    const posts = await attachOutboxMedia(database, origin, outbox.posts);
+    return activityJsonResponse(outboxPage(origin, owner.handle, posts));
   }
 
   const collection = await loadActorCollection(database, owner.actorId, kind);
@@ -204,6 +210,24 @@ export async function handlePublicActorCollectionActivity(
       ? actorCollectionPage(origin, owner.handle, kind, collection.items)
       : orderedCollection(origin, owner.handle, kind, collection.total),
   );
+}
+
+async function attachOutboxMedia(
+  database: D1Database,
+  origin: string,
+  posts: readonly PublicActorPost[],
+) {
+  const attachments = await loadPostAttachments(
+    database,
+    posts.map((post) => post.id),
+  );
+  return posts.map((post) => ({
+    ...post,
+    attachments: mediaRecordsToNoteAttachments(
+      origin,
+      attachments.get(post.id) ?? [],
+    ),
+  }));
 }
 
 export function outboxPage(

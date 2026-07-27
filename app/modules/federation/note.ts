@@ -1,4 +1,5 @@
 import { actorId, noteId } from "./identifiers";
+import type { NoteAttachmentJson } from "@/modules/media/federation";
 
 export type PublicPost = {
   id: string;
@@ -7,7 +8,9 @@ export type PublicPost = {
   publishedAt: string;
   updatedAt: string;
   parentPostId: string | null;
+  attachments?: NoteAttachmentJson[];
 };
+
 export function noteObject(origin: string, post: PublicPost) {
   const id = noteId(origin, post.id);
   return {
@@ -21,6 +24,9 @@ export function noteObject(origin: string, post: PublicPost) {
     to: ["https://www.w3.org/ns/activitystreams#Public"],
     ...(post.parentPostId
       ? { inReplyTo: noteId(origin, post.parentPostId) }
+      : {}),
+    ...(post.attachments && post.attachments.length > 0
+      ? { attachment: post.attachments }
       : {}),
   };
 }

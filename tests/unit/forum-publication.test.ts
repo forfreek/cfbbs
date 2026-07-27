@@ -30,6 +30,16 @@ function forumDatabase({
           if (sql.startsWith("SELECT threads.is_locked")) {
             return { first: async () => thread };
           }
+          if (
+            sql.trimStart().startsWith("SELECT") &&
+            (sql.includes("FROM media_objects") ||
+              sql.includes("FROM post_attachments"))
+          ) {
+            return {
+              first: async () => null,
+              all: async () => ({ results: [] }),
+            };
+          }
           return { sql, params };
         },
       };

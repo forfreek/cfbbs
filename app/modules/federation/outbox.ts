@@ -1,6 +1,12 @@
 import { noteId } from "./identifiers";
 import { noteObject, type PublicPost } from "./note";
 import { shouldFederatePost } from "./publication";
+import {
+  loadOwnedMediaByIds,
+  loadPostAttachments,
+  mediaRecordsToNoteAttachments,
+  type MediaObjectRecord,
+} from "@/modules/media";
 
 export type FederationPostPublication = {
   eventId: string;
@@ -18,6 +24,7 @@ type PostOutboxInput = {
   publishedAt: string;
   updatedAt: string;
   parentPostId: string | null;
+  attachmentIds?: readonly string[];
   publication?: FederationPostPublication;
 };
 
@@ -96,6 +103,50 @@ export function createNoteDeleteActivity(
   };
 }
 
+
+async function resolveNoteMedia(
+  database: D1Database,
+  input: {
+    postId: string;
+    authorUserId: string;
+    attachmentIds?: readonly string[];
+  },
+) {
+  if (input.attachmentIds) {
+    if (input.attachmentIds.length === 0) return [] as MediaObjectRecord[];
+    const owned = await loadOwnedMediaByIds(database, {
+      authorUserId: input.authorUserId,
+      attachmentIds: input.attachmentIds,
+    });
+    if (!owned) {
+      throw new Error("Public post attachments must belong to the author.");
+    }
+    return owned;
+  }
+  const attachments = await loadPostAttachments(database, [input.postId]);
+  return attachments.get(input.postId) ?? [];
+}
+
+async function publicPostWithAttachments(
+  database: D1Database,
+  origin: string,
+  post: PublicPost,
+  options: {
+    authorUserId: string;
+    attachmentIds?: readonly string[];
+  },
+) {
+  const media = await resolveNoteMedia(database, {
+    postId: post.id,
+    authorUserId: options.authorUserId,
+    attachmentIds: options.attachmentIds,
+  });
+  return {
+    ...post,
+    attachments: mediaRecordsToNoteAttachments(origin, media),
+  };
+}
+
 async function loadAuthorHandle(database: D1Database, userId: string) {
   return database
     .prepare("SELECT handle FROM profiles WHERE user_id = ?")
@@ -156,14 +207,25 @@ export async function publicPostOutboxStatement(
   const author = await loadAuthorHandle(database, input.authorUserId);
   if (!author) throw new Error("Local post author profile not found.");
 
-  const activity = createNoteActivity(input.publication.origin, {
-    id: input.postId,
-    authorHandle: author.handle,
-    html: input.html,
-    publishedAt: input.publishedAt,
-    updatedAt: input.updatedAt,
-    parentPostId: input.parentPostId,
-  });
+  const activity = createNoteActivity(
+    input.publication.origin,
+    await publicPostWithAttachments(
+      database,
+      input.publication.origin,
+      {
+        id: input.postId,
+        authorHandle: author.handle,
+        html: input.html,
+        publishedAt: input.publishedAt,
+        updatedAt: input.updatedAt,
+        parentPostId: input.parentPostId,
+      },
+      {
+        authorUserId: input.authorUserId,
+        attachmentIds: input.attachmentIds,
+      },
+    ),
+  );
   return database
     .prepare(
       "INSERT INTO federation_outbox_events (id, actor_id, aggregate_type, aggregate_id, activity_type, activity_json, delivery_scope, state, queued_at, created_at, updated_at) VALUES (?, ?, 'post', ?, 'Create', ?, 'followers', 'pending', NULL, ?, ?)",
@@ -204,14 +266,22 @@ export async function publicPostUpdateOutboxStatements(
   const activity = createNoteUpdateActivity(
     input.publication.origin,
     input.publication.eventId,
-    {
-      id: input.postId,
-      authorHandle: author.handle,
-      html: input.html,
-      publishedAt: input.publishedAt,
-      updatedAt: input.updatedAt,
-      parentPostId: input.parentPostId,
-    },
+    await publicPostWithAttachments(
+      database,
+      input.publication.origin,
+      {
+        id: input.postId,
+        authorHandle: author.handle,
+        html: input.html,
+        publishedAt: input.publishedAt,
+        updatedAt: input.updatedAt,
+        parentPostId: input.parentPostId,
+      },
+      {
+        authorUserId: input.authorUserId,
+        attachmentIds: input.attachmentIds,
+      },
+    ),
   );
   return replacePostEventStatements(database, {
     eventId: input.publication.eventId,

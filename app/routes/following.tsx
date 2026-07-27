@@ -3,6 +3,10 @@ import { Form, Link, redirect } from "react-router";
 import type { Route } from "./+types/following";
 import { listFollowedRemoteNotes } from "@/modules/federation/remote-note";
 import { getSession } from "@/modules/identity/auth.server";
+import {
+  loadRemoteObjectAttachments,
+  remoteAttachmentsToView,
+} from "@/modules/media";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const session = await getSession(request, context.cloudflare.env);
@@ -11,7 +15,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     context.cloudflare.env.DB,
     session.user.id,
   );
-  return { notes: notes.results };
+  const attachmentMap = await loadRemoteObjectAttachments(
+    context.cloudflare.env.DB,
+    notes.results.map((note) => note.uri),
+  );
+  return {
+    notes: notes.results.map((note) => ({
+      ...note,
+      attachments: remoteAttachmentsToView(attachmentMap.get(note.uri) ?? []),
+    })),
+  };
 }
 
 export default function Following({ loaderData }: Route.ComponentProps) {
@@ -55,6 +68,21 @@ export default function Following({ loaderData }: Route.ComponentProps) {
                 className="prose prose-slate mt-4 max-w-none"
                 dangerouslySetInnerHTML={{ __html: note.contentHtml }}
               />
+              {note.attachments.length > 0 ? (
+                <ul className="mt-4 space-y-1 text-sm">
+                  {note.attachments.map((attachment) => (
+                    <li key={attachment.id}>
+                      <a
+                        className="text-blue-700 hover:underline"
+                        href={attachment.url}
+                        rel="nofollow ugc noopener"
+                      >
+                        {attachment.originalFilename}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               <a
                 className="mt-4 inline-block text-xs text-slate-500 hover:text-blue-700 hover:underline"
                 href={note.uri}

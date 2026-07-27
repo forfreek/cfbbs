@@ -22,15 +22,57 @@ const allowedTags = [
   "h5",
   "h6",
   "a",
+  "img",
 ];
+
+function isSafeImageSrc(value: string) {
+  try {
+    if (value.startsWith("/media/")) {
+      return /^\/media\/[a-zA-Z0-9_-]{8,128}$/.test(value);
+    }
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function transformImageTag(
+  tagName: string,
+  attribs: sanitizeHtml.Attributes,
+): sanitizeHtml.Tag {
+  const src = attribs.src ?? "";
+  if (!isSafeImageSrc(src)) {
+    return {
+      tagName: "span",
+      text: "",
+      attribs: {},
+    };
+  }
+  return {
+    tagName,
+    attribs: {
+      src,
+      alt: attribs.alt ?? "",
+      title: attribs.title ?? "",
+      loading: "lazy",
+      decoding: "async",
+    },
+  };
+}
 
 export function renderMarkdown(markdown: string) {
   return sanitizeHtml(marked.parse(markdown, { async: false }), {
     allowedTags,
-    allowedAttributes: { a: ["href", "title"] },
+    allowedAttributes: {
+      a: ["href", "title"],
+      img: ["src", "alt", "title"],
+    },
     allowedSchemes: ["https", "http", "mailto"],
+    allowProtocolRelative: false,
     transformTags: {
       a: sanitizeHtml.simpleTransform("a", { rel: "nofollow ugc noopener" }),
+      img: transformImageTag,
     },
   });
 }

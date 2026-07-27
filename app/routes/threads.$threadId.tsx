@@ -15,6 +15,13 @@ import {
   loadForumThread,
 } from "@/modules/forum/read.server";
 import { createReply } from "@/modules/forum/posts/service";
+import {
+  loadPostAttachments,
+  loadRemoteObjectAttachments,
+  mediaObjectPublicUrl,
+  remoteAttachmentsToView,
+  validateAttachmentIds,
+} from "@/modules/media";
 import { getSession } from "@/modules/identity/auth.server";
 import { authorizeDatabase } from "@/modules/permissions/authorization.server";
 
@@ -73,10 +80,40 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
     boardIsPrivate || canViewPrivate,
     userId,
   );
+  const attachmentMap = await loadPostAttachments(
+    env.DB,
+    posts.results.map((post) => post.id),
+  );
+  const remoteObjectUris = posts.results
+    .map((post) => post.federationObjectId)
+    .filter((value): value is string => Boolean(value));
+  const remoteAttachmentMap = await loadRemoteObjectAttachments(
+    env.DB,
+    remoteObjectUris,
+  );
+  const postsWithAttachments = posts.results.map((post) => {
+    const local = (attachmentMap.get(post.id) ?? []).map((item) => ({
+      id: item.id,
+      url: mediaObjectPublicUrl(env.APP_ORIGIN, item.id),
+      contentType: item.contentType,
+      originalFilename: item.originalFilename,
+      kind: item.kind as "image" | "document",
+      byteSize: item.byteSize,
+    }));
+    const remote = post.federationObjectId
+      ? remoteAttachmentsToView(
+          remoteAttachmentMap.get(post.federationObjectId) ?? [],
+        )
+      : [];
+    return {
+      ...post,
+      attachments: [...local, ...remote],
+    };
+  });
   return {
     board,
     thread,
-    posts: posts.results,
+    posts: postsWithAttachments,
     session,
     canReply,
     canEditAny: editAny.allowed,
@@ -128,6 +165,10 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     markdown: String(form.get("markdown") ?? ""),
   });
   if (!input.ok) return data({ error: input.message }, { status: 400 });
+  const attachments = validateAttachmentIds(form.getAll("attachmentIds"));
+  if (!attachments.ok) {
+    return data({ error: attachments.message }, { status: 400 });
+  }
 
   const visibility =
     boardIsPrivate || thread.firstPostVisibility === "private"
@@ -140,6 +181,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     parentPostId: thread.firstPostId,
     authorUserId: session.user.id,
     markdown: input.value.markdown,
+    attachmentIds: attachments.ids,
     visibility,
     ...(visibility === "public"
       ? {
@@ -245,6 +287,21 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
               className="prose prose-slate mt-4 max-w-none"
               dangerouslySetInnerHTML={{ __html: post.renderedHtml }}
             />
+            {post.attachments && post.attachments.length > 0 ? (
+              <ul className="mt-4 space-y-1 text-sm text-slate-600">
+                {post.attachments.map((attachment) => (
+                  <li key={attachment.id}>
+                    <a
+                      className="text-blue-700 hover:underline"
+                      href={attachment.url}
+                      rel="nofollow ugc noopener"
+                    >
+                      {attachment.originalFilename}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {post.parentPostId ? (
               <p className="mt-4 text-xs text-slate-500">
                 回复 #{post.parentPostId}

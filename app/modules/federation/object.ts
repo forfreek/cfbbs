@@ -1,5 +1,10 @@
 import { noteObject } from "./note";
 import { validateHandle } from "@/modules/identity/handle";
+import {
+  loadPostAttachments,
+  mediaRecordsToNoteAttachments,
+  type NoteAttachmentJson,
+} from "@/modules/media";
 
 export type PublicNotePost = {
   id: string;
@@ -8,6 +13,7 @@ export type PublicNotePost = {
   publishedAt: string;
   updatedAt: string;
   parentPostId: string | null;
+  attachments?: NoteAttachmentJson[];
 };
 
 const publicNoteQuery = `
@@ -43,6 +49,23 @@ export async function loadPublicNote(
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(postId)) return null;
 
   return database.prepare(publicNoteQuery).bind(postId).first<PublicNotePost>();
+}
+
+export async function loadPublicNoteWithAttachments(
+  database: D1Database,
+  origin: string,
+  postId: string,
+) {
+  const post = await loadPublicNote(database, postId);
+  if (!post) return null;
+  const attachments = await loadPostAttachments(database, [post.id]);
+  return {
+    ...post,
+    attachments: mediaRecordsToNoteAttachments(
+      origin,
+      attachments.get(post.id) ?? [],
+    ),
+  } satisfies PublicNotePost;
 }
 
 export function acceptsActivityStreams(accept: string) {
@@ -88,7 +111,7 @@ export async function handlePublicNoteActivity(
     return new Response("Not found", { status: 404 });
   }
 
-  const post = await loadPublicNote(database, postId);
+  const post = await loadPublicNoteWithAttachments(database, origin, postId);
   if (!post || !isPublicNotePost(post)) {
     return new Response("Not found", { status: 404 });
   }

@@ -4,13 +4,14 @@ import type { Route } from "./+types/objects.$postId";
 import {
   acceptsActivityStreams,
   isPublicNotePost,
-  loadPublicNote,
+  loadPublicNoteWithAttachments,
   publicNoteActivityResponse,
 } from "@/modules/federation/object";
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
-  const post = await loadPublicNote(
+  const post = await loadPublicNoteWithAttachments(
     context.cloudflare.env.DB,
+    context.cloudflare.env.APP_ORIGIN,
     params.postId ?? "",
   );
   if (!post || !isPublicNotePost(post)) {
@@ -41,6 +42,21 @@ export default function PublicNote({ loaderData }: Route.ComponentProps) {
         className="prose prose-slate mt-6 max-w-none"
         dangerouslySetInnerHTML={{ __html: post.html }}
       />
+      {post.attachments && post.attachments.length > 0 ? (
+        <ul className="mt-6 space-y-2 text-sm">
+          {post.attachments.map((attachment) => (
+            <li key={attachment.url}>
+              <a
+                className="text-blue-700 hover:underline"
+                href={attachment.url}
+                rel="nofollow ugc noopener"
+              >
+                {attachment.name}
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </main>
   );
 }

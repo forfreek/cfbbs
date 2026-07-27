@@ -8,6 +8,7 @@ import { enqueuePendingOutboxEvents } from "@/modules/jobs/federation-outbox";
 import { purgeExpiredRemoteObjects } from "@/modules/jobs/remote-retention";
 import { scheduledWork } from "@/modules/jobs/scheduled";
 import { purgeExpiredRemoteActorQuarantines } from "@/modules/moderation/remote-quarantine";
+import { handleMediaHttp, purgeOrphanMedia } from "@/modules/media";
 
 declare module "react-router" {
   export interface AppLoadContext {
@@ -67,6 +68,9 @@ async function recordTestInboundRequest(env: Env, request: Request) {
 export default {
   async fetch(request, env, ctx) {
     await recordTestInboundRequest(env, request);
+    const mediaResponse = await handleMediaHttp(request, env);
+    if (mediaResponse) return mediaResponse;
+
     const collectionResponse = await handlePublicActorCollectionActivity(
       request,
       env.DB,
@@ -111,6 +115,17 @@ export default {
           [
             () => purgeExpiredRemoteObjects(env.DB),
             () => purgeExpiredRemoteActorQuarantines(env.DB),
+            async () => {
+              if (!env.MEDIA_BUCKET) return;
+              const cutoff = new Date(
+                Date.now() - 24 * 60 * 60 * 1_000,
+              ).toISOString();
+              await purgeOrphanMedia({
+                database: env.DB,
+                bucket: env.MEDIA_BUCKET,
+                olderThanIso: cutoff,
+              });
+            },
           ],
         ),
       ),

@@ -20,6 +20,9 @@ describe("database schema contract", () => {
         "postRevisions",
         "federationActors",
         "federationOutboxEvents",
+        "mediaObjects",
+        "postAttachments",
+        "remoteObjectAttachments",
       ]),
     );
   });

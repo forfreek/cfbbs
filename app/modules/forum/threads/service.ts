@@ -4,6 +4,10 @@ import {
   type FederationPostPublication,
 } from "@/modules/federation/outbox";
 import { noteId } from "@/modules/federation/identifiers";
+import {
+  loadOwnedMediaByIds,
+  postAttachmentInsertStatements,
+} from "@/modules/media";
 
 export type NewThread = {
   threadId: string;
@@ -14,12 +18,23 @@ export type NewThread = {
   title: string;
   markdown: string;
   visibility: "public" | "private";
+  attachmentIds?: readonly string[];
   federation?: FederationPostPublication;
 };
 
 export async function createThread(database: D1Database, input: NewThread) {
   const now = new Date().toISOString();
   const html = renderMarkdown(input.markdown);
+  const attachmentIds = input.attachmentIds ?? [];
+  if (attachmentIds.length > 0) {
+    const owned = await loadOwnedMediaByIds(database, {
+      authorUserId: input.authorUserId,
+      attachmentIds,
+    });
+    if (!owned) {
+      throw new Error("只能使用自己上传且未删除的附件。");
+    }
+  }
   const federationObjectId = input.federation
     ? noteId(input.federation.origin, input.postId)
     : null;
@@ -33,6 +48,7 @@ export async function createThread(database: D1Database, input: NewThread) {
     publishedAt: now,
     updatedAt: now,
     parentPostId: null,
+    attachmentIds,
     publication: input.federation,
   });
   await database.batch([
@@ -73,6 +89,11 @@ export async function createThread(database: D1Database, input: NewThread) {
         "UPDATE threads SET first_post_id = ?, post_count = 1, last_activity_at = ?, updated_at = ? WHERE id = ?",
       )
       .bind(input.postId, now, now, input.threadId),
+    ...postAttachmentInsertStatements(database, {
+      postId: input.postId,
+      attachmentIds,
+      createdAt: now,
+    }),
     ...(input.visibility === "public"
       ? [
           database

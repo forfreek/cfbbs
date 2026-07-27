@@ -50,6 +50,10 @@ import {
   storeRemoteNote,
   storeRemoteThreadReply,
 } from "./remote-note";
+import {
+  extractRemoteNoteAttachments,
+  replaceRemoteObjectAttachments,
+} from "@/modules/media";
 
 export type FederationEnvironment = Pick<
   Env,
@@ -801,6 +805,11 @@ async function processInboundRemoteNoteActivity(
         await storeRemoteNote(context.data.DB, remoteNote);
       }
     }
+    const noteJson = await note.toJsonLd();
+    await replaceRemoteObjectAttachments(context.data.DB, {
+      objectUri: noteUri,
+      attachments: extractRemoteNoteAttachments(noteJson),
+    });
     await completeInboxActivity(context.data.DB, activityId);
   } catch (error) {
     if (error instanceof RejectedInboundActivity) {
