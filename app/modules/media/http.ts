@@ -1,6 +1,7 @@
 import { getSession } from "@/modules/identity/auth.server";
 
 import { authorizeMediaRead } from "./access";
+import { createMediaStoreFromEnv } from "./s3";
 import {
   loadMediaBytes,
   mediaObjectPublicPath,
@@ -12,11 +13,6 @@ function json(data: unknown, status = 200) {
   return Response.json(data, { status });
 }
 
-function mediaStore(env: Env) {
-  // Reuse existing free Fedify KV. No R2 / payment method required.
-  return env.FEDIFY_KV;
-}
-
 export async function handleMediaUpload(request: Request, env: Env) {
   if (request.method !== "POST") {
     return json({ ok: false, message: "Method not allowed." }, 405);
@@ -25,9 +21,16 @@ export async function handleMediaUpload(request: Request, env: Env) {
   if (!session) {
     return json({ ok: false, message: "请先登录。" }, 401);
   }
-  const store = mediaStore(env);
+  const store = createMediaStoreFromEnv(env);
   if (!store) {
-    return json({ ok: false, message: "媒体存储未配置。" }, 503);
+    return json(
+      {
+        ok: false,
+        message:
+          "媒体存储未配置。请设置 S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY。",
+      },
+      503,
+    );
   }
 
   let form: FormData;
@@ -51,29 +54,34 @@ export async function handleMediaUpload(request: Request, env: Env) {
   }
 
   const bytes = await file.arrayBuffer();
-  const stored = await storeUploadedMedia({
-    database: env.DB,
-    store,
-    uploaderUserId: session.user.id,
-    filename: file.name || preliminary.originalFilename,
-    contentType,
-    bytes,
-  });
-  if (!stored.ok) {
-    return json({ ok: false, message: stored.message }, 400);
+  try {
+    const stored = await storeUploadedMedia({
+      database: env.DB,
+      store,
+      uploaderUserId: session.user.id,
+      filename: file.name || preliminary.originalFilename,
+      contentType,
+      bytes,
+    });
+    if (!stored.ok) {
+      return json({ ok: false, message: stored.message }, 400);
+    }
+    return json({
+      ok: true,
+      media: {
+        id: stored.media.id,
+        url: mediaObjectPublicPath(stored.media.id),
+        contentType: stored.media.contentType,
+        originalFilename: stored.media.originalFilename,
+        kind: stored.media.kind,
+        byteSize: stored.media.byteSize,
+      },
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "上传到对象存储失败。";
+    return json({ ok: false, message }, 502);
   }
-
-  return json({
-    ok: true,
-    media: {
-      id: stored.media.id,
-      url: mediaObjectPublicPath(stored.media.id),
-      contentType: stored.media.contentType,
-      originalFilename: stored.media.originalFilename,
-      kind: stored.media.kind,
-      byteSize: stored.media.byteSize,
-    },
-  });
 }
 
 export async function handleMediaDownload(request: Request, env: Env) {
@@ -84,7 +92,7 @@ export async function handleMediaDownload(request: Request, env: Env) {
   const match = url.pathname.match(/^\/media\/([a-zA-Z0-9_-]{8,128})$/);
   if (!match) return null;
 
-  const store = mediaStore(env);
+  const store = createMediaStoreFromEnv(env);
   if (!store) {
     return new Response("Media storage unavailable", { status: 503 });
   }
@@ -99,7 +107,12 @@ export async function handleMediaDownload(request: Request, env: Env) {
     return new Response("Not found", { status: access.status });
   }
 
-  const bytes = await loadMediaBytes(store, access.media.r2Key);
+  let bytes: ArrayBuffer | null;
+  try {
+    bytes = await loadMediaBytes(store, access.media.r2Key);
+  } catch {
+    return new Response("Object storage error", { status: 502 });
+  }
   if (!bytes) {
     return new Response("Not found", { status: 404 });
   }

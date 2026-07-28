@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { noteObject } from "@/modules/federation/note";
 import {
   buildMediaStorageKey,
+  createS3MediaStore,
   extractRemoteNoteAttachments,
   mediaRecordsToNoteAttachments,
+  parseS3MediaConfig,
   storeUploadedMedia,
   validateAttachmentIds,
   validateUploadFile,
@@ -206,23 +208,49 @@ describe("private media access", () => {
 });
 
 
-describe("media kv storage", () => {
-  it("builds stable blob keys under the media prefix", () => {
+
+describe("media s3 storage", () => {
+  it("builds stable object keys under the media prefix", () => {
     expect(
       buildMediaStorageKey({
         uploaderUserId: "user-1",
         mediaId: "mediaone123",
         extension: "png",
       }),
-    ).toBe("media/blob/user-1/mediaone123.png");
+    ).toBe("media/user-1/mediaone123.png");
   });
 
-  it("stores bytes in KV and records metadata in D1", async () => {
-    const puts: Array<{ key: string; value: ArrayBuffer }> = [];
+  it("parses S3 config only when required fields exist", () => {
+    expect(
+      parseS3MediaConfig({
+        S3_ENDPOINT: "https://s3.example.test",
+        S3_BUCKET: "cfbbs-media",
+        S3_ACCESS_KEY_ID: "AKIA",
+        S3_SECRET_ACCESS_KEY: "secret",
+      }),
+    ).toMatchObject({
+      endpoint: "https://s3.example.test",
+      bucket: "cfbbs-media",
+      region: "auto",
+      forcePathStyle: true,
+    });
+    expect(parseS3MediaConfig({})).toBeNull();
+  });
+
+  it("stores bytes through the blob store and records metadata in D1", async () => {
+    const puts: Array<{
+      key: string;
+      value: ArrayBuffer;
+      contentType?: string;
+    }> = [];
     const inserts: unknown[][] = [];
     const store = {
-      async put(key: string, value: ArrayBuffer) {
-        puts.push({ key, value });
+      async put(
+        key: string,
+        value: ArrayBuffer,
+        options?: { contentType?: string },
+      ) {
+        puts.push({ key, value, contentType: options?.contentType });
       },
       async get() {
         return null;
@@ -259,8 +287,53 @@ describe("media kv storage", () => {
     expect(stored.ok).toBe(true);
     if (!stored.ok) return;
     expect(puts).toHaveLength(1);
-    expect(puts[0]?.key).toContain("media/blob/user-1/");
+    expect(puts[0]?.key).toContain("media/user-1/");
+    expect(puts[0]?.contentType).toBe("image/png");
     expect(inserts[0]?.[2]).toBe(puts[0]?.key);
     expect(stored.media.contentType).toBe("image/png");
+  });
+
+  it("signs path-style PutObject requests for S3-compatible endpoints", async () => {
+    const requests: Array<{ url: string; method: string; headers: Headers }> =
+      [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      requests.push({
+        url: request.url,
+        method: request.method,
+        headers: request.headers,
+      });
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      const store = createS3MediaStore({
+        endpoint: "https://s3.example.test",
+        region: "us-east-1",
+        bucket: "cfbbs-media",
+        accessKeyId: "AKIATEST",
+        secretAccessKey: "testsecret",
+        forcePathStyle: true,
+      });
+      const body = new TextEncoder().encode("png-bytes").buffer;
+      await store.put("media/user-1/a.png", body, {
+        contentType: "image/png",
+      });
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.method).toBe("PUT");
+      expect(requests[0]?.url).toBe(
+        "https://s3.example.test/cfbbs-media/media/user-1/a.png",
+      );
+      expect(requests[0]?.headers.get("authorization")).toMatch(
+        /^AWS4-HMAC-SHA256 Credential=AKIATEST\/\d{8}\/us-east-1\/s3\/aws4_request/,
+      );
+      expect(requests[0]?.headers.get("x-amz-content-sha256")).toMatch(
+        /^[a-f0-9]{64}$/,
+      );
+      expect(requests[0]?.headers.get("content-type")).toBe("image/png");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

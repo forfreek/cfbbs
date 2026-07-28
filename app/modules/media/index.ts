@@ -13,6 +13,13 @@ export {
   replaceRemoteObjectAttachments,
 } from "./remote";
 export {
+  createMediaStoreFromEnv,
+  createS3MediaStore,
+  parseS3MediaConfig,
+  type MediaBlobStore,
+  type S3MediaConfig,
+} from "./s3";
+export {
   buildMediaR2Key,
   buildMediaStorageKey,
   loadMediaBytes,
@@ -27,7 +34,6 @@ export {
   replacePostAttachments,
   softDeletePostMediaLinks,
   storeUploadedMedia,
-  type MediaBlobStore,
 } from "./storage";
 export {
   allowedMediaTypes,

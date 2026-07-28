@@ -8,7 +8,11 @@ import { enqueuePendingOutboxEvents } from "@/modules/jobs/federation-outbox";
 import { purgeExpiredRemoteObjects } from "@/modules/jobs/remote-retention";
 import { scheduledWork } from "@/modules/jobs/scheduled";
 import { purgeExpiredRemoteActorQuarantines } from "@/modules/moderation/remote-quarantine";
-import { handleMediaHttp, purgeOrphanMedia } from "@/modules/media";
+import {
+  createMediaStoreFromEnv,
+  handleMediaHttp,
+  purgeOrphanMedia,
+} from "@/modules/media";
 
 declare module "react-router" {
   export interface AppLoadContext {
@@ -116,13 +120,14 @@ export default {
             () => purgeExpiredRemoteObjects(env.DB),
             () => purgeExpiredRemoteActorQuarantines(env.DB),
             async () => {
-              if (!env.FEDIFY_KV) return;
+              const store = createMediaStoreFromEnv(env);
+              if (!store) return;
               const cutoff = new Date(
                 Date.now() - 24 * 60 * 60 * 1_000,
               ).toISOString();
               await purgeOrphanMedia({
                 database: env.DB,
-                store: env.FEDIFY_KV,
+                store,
                 olderThanIso: cutoff,
               });
             },

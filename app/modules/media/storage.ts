@@ -1,3 +1,4 @@
+import type { MediaBlobStore } from "./s3";
 import type { MediaObjectRecord } from "./types";
 import {
   isAllowedMediaType,
@@ -24,19 +25,19 @@ export function mediaObjectPublicUrl(origin: string, mediaId: string) {
   return new URL(mediaObjectPublicPath(mediaId), origin).href;
 }
 
-/** Stable KV object key. Column name remains r2_key for migration compatibility. */
+/** Stable object key. DB column remains r2_key for migration compatibility. */
 export function buildMediaStorageKey(input: {
   uploaderUserId: string;
   mediaId: string;
   extension: string;
 }) {
-  return `media/blob/${input.uploaderUserId}/${input.mediaId}.${input.extension}`;
+  return `media/${input.uploaderUserId}/${input.mediaId}.${input.extension}`;
 }
 
 /** @deprecated Use buildMediaStorageKey */
 export const buildMediaR2Key = buildMediaStorageKey;
 
-export type MediaBlobStore = Pick<KVNamespace, "put" | "get" | "delete">;
+export type { MediaBlobStore };
 
 export async function storeUploadedMedia(input: {
   database: D1Database;
@@ -66,11 +67,11 @@ export async function storeUploadedMedia(input: {
   const kind = mediaKindForType(validation.contentType);
 
   await input.store.put(storageKey, input.bytes, {
+    contentType: validation.contentType,
+    contentDisposition: `inline; filename="${validation.originalFilename.replaceAll('"', "")}"`,
     metadata: {
-      mediaId,
-      uploaderUserId: input.uploaderUserId,
-      contentType: validation.contentType,
-      originalFilename: validation.originalFilename,
+      mediaid: mediaId,
+      uploaderuserid: input.uploaderUserId,
       sha256,
       kind,
     },
@@ -126,7 +127,7 @@ export async function loadMediaBytes(
   store: MediaBlobStore,
   storageKey: string,
 ) {
-  return store.get(storageKey, "arrayBuffer");
+  return store.get(storageKey);
 }
 
 export async function loadOwnedMediaByIds(
