@@ -14,6 +14,8 @@ export {
 } from "./remote";
 export {
   buildMediaR2Key,
+  buildMediaStorageKey,
+  loadMediaBytes,
   loadMediaObject,
   loadOwnedMediaByIds,
   loadPostAttachments,
@@ -25,6 +27,7 @@ export {
   replacePostAttachments,
   softDeletePostMediaLinks,
   storeUploadedMedia,
+  type MediaBlobStore,
 } from "./storage";
 export {
   allowedMediaTypes,

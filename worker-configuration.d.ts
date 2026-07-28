@@ -9,7 +9,6 @@ declare namespace Cloudflare {
 		FEDIFY_KV: KVNamespace;
 		DB: D1Database;
 		FEDERATION_QUEUE: Queue;
-		MEDIA_BUCKET: R2Bucket;
 		APP_ORIGIN: "https://cfbbs-test.s.lukelzlz.top";
 		FEDIFY_ALLOW_PRIVATE_ADDRESS: "true";
 		VALUE_FROM_CLOUDFLARE: "Hello from the CFBBS test environment";
@@ -18,7 +17,6 @@ declare namespace Cloudflare {
 		FEDIFY_KV: KVNamespace;
 		DB: D1Database;
 		FEDERATION_QUEUE: Queue;
-		MEDIA_BUCKET: R2Bucket;
 		APP_ORIGIN: "https://cfbbs-test.s.lukelzlz.top" | "http://127.0.0.1:5173";
 		FEDIFY_ALLOW_PRIVATE_ADDRESS?: "true";
 		VALUE_FROM_CLOUDFLARE: "Hello from the CFBBS test environment" | "Hello from Cloudflare";

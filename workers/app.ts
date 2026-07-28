@@ -116,13 +116,13 @@ export default {
             () => purgeExpiredRemoteObjects(env.DB),
             () => purgeExpiredRemoteActorQuarantines(env.DB),
             async () => {
-              if (!env.MEDIA_BUCKET) return;
+              if (!env.FEDIFY_KV) return;
               const cutoff = new Date(
                 Date.now() - 24 * 60 * 60 * 1_000,
               ).toISOString();
               await purgeOrphanMedia({
                 database: env.DB,
-                bucket: env.MEDIA_BUCKET,
+                store: env.FEDIFY_KV,
                 olderThanIso: cutoff,
               });
             },

@@ -24,17 +24,23 @@ export function mediaObjectPublicUrl(origin: string, mediaId: string) {
   return new URL(mediaObjectPublicPath(mediaId), origin).href;
 }
 
-export function buildMediaR2Key(input: {
+/** Stable KV object key. Column name remains r2_key for migration compatibility. */
+export function buildMediaStorageKey(input: {
   uploaderUserId: string;
   mediaId: string;
   extension: string;
 }) {
-  return `media/${input.uploaderUserId}/${input.mediaId}.${input.extension}`;
+  return `media/blob/${input.uploaderUserId}/${input.mediaId}.${input.extension}`;
 }
+
+/** @deprecated Use buildMediaStorageKey */
+export const buildMediaR2Key = buildMediaStorageKey;
+
+export type MediaBlobStore = Pick<KVNamespace, "put" | "get" | "delete">;
 
 export async function storeUploadedMedia(input: {
   database: D1Database;
-  bucket: R2Bucket;
+  store: MediaBlobStore;
   uploaderUserId: string;
   filename: string;
   contentType: string;
@@ -50,7 +56,7 @@ export async function storeUploadedMedia(input: {
   const mediaId = crypto.randomUUID().replaceAll("-", "");
   const extension =
     validation.originalFilename.split(".").pop()?.toLowerCase() ?? "bin";
-  const r2Key = buildMediaR2Key({
+  const storageKey = buildMediaStorageKey({
     uploaderUserId: input.uploaderUserId,
     mediaId,
     extension,
@@ -59,15 +65,14 @@ export async function storeUploadedMedia(input: {
   const now = new Date().toISOString();
   const kind = mediaKindForType(validation.contentType);
 
-  await input.bucket.put(r2Key, input.bytes, {
-    httpMetadata: {
-      contentType: validation.contentType,
-      contentDisposition: `inline; filename="${validation.originalFilename.replaceAll('"', "")}"`,
-    },
-    customMetadata: {
+  await input.store.put(storageKey, input.bytes, {
+    metadata: {
       mediaId,
       uploaderUserId: input.uploaderUserId,
+      contentType: validation.contentType,
+      originalFilename: validation.originalFilename,
       sha256,
+      kind,
     },
   });
 
@@ -79,7 +84,7 @@ export async function storeUploadedMedia(input: {
       .bind(
         mediaId,
         input.uploaderUserId,
-        r2Key,
+        storageKey,
         validation.contentType,
         input.bytes.byteLength,
         sha256,
@@ -89,14 +94,14 @@ export async function storeUploadedMedia(input: {
       )
       .run();
   } catch (error) {
-    await input.bucket.delete(r2Key);
+    await input.store.delete(storageKey);
     throw error;
   }
 
   const record: MediaObjectRecord = {
     id: mediaId,
     uploaderUserId: input.uploaderUserId,
-    r2Key,
+    r2Key: storageKey,
     contentType: validation.contentType,
     byteSize: input.bytes.byteLength,
     sha256,
@@ -115,6 +120,13 @@ export async function loadMediaObject(database: D1Database, mediaId: string) {
     )
     .bind(mediaId)
     .first<MediaObjectRecord>();
+}
+
+export async function loadMediaBytes(
+  store: MediaBlobStore,
+  storageKey: string,
+) {
+  return store.get(storageKey, "arrayBuffer");
 }
 
 export async function loadOwnedMediaByIds(
@@ -284,7 +296,7 @@ export async function softDeletePostMediaLinks(
 
 export async function purgeOrphanMedia(input: {
   database: D1Database;
-  bucket: R2Bucket;
+  store: MediaBlobStore;
   olderThanIso: string;
   limit?: number;
 }) {
@@ -306,7 +318,7 @@ export async function purgeOrphanMedia(input: {
 
   let purged = 0;
   for (const orphan of orphans.results) {
-    await input.bucket.delete(orphan.r2Key);
+    await input.store.delete(orphan.r2Key);
     await input.database
       .prepare(
         "UPDATE media_objects SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",

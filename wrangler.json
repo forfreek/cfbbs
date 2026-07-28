@@ -97,20 +97,7 @@
         "APP_ORIGIN": "https://cfbbs-test.s.lukelzlz.top",
         "FEDIFY_ALLOW_PRIVATE_ADDRESS": "true",
         "VALUE_FROM_CLOUDFLARE": "Hello from the CFBBS test environment"
-      },
-      "r2_buckets": [
-        {
-          "binding": "MEDIA_BUCKET",
-          "bucket_name": "cfbbs-test-media"
-        }
-      ]
+      }
     }
-  },
-  "r2_buckets": [
-    {
-      "binding": "MEDIA_BUCKET",
-      "bucket_name": "cfbbs-local-media",
-      "preview_bucket_name": "cfbbs-local-media"
-    }
-  ]
+  }
 }

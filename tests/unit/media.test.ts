@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { noteObject } from "@/modules/federation/note";
 import {
+  buildMediaStorageKey,
   extractRemoteNoteAttachments,
   mediaRecordsToNoteAttachments,
+  storeUploadedMedia,
   validateAttachmentIds,
   validateUploadFile,
 } from "@/modules/media";
@@ -200,5 +202,65 @@ describe("private media access", () => {
       mediaId: "mediaone123",
     });
     expect(denied).toMatchObject({ ok: false, status: 401 });
+  });
+});
+
+
+describe("media kv storage", () => {
+  it("builds stable blob keys under the media prefix", () => {
+    expect(
+      buildMediaStorageKey({
+        uploaderUserId: "user-1",
+        mediaId: "mediaone123",
+        extension: "png",
+      }),
+    ).toBe("media/blob/user-1/mediaone123.png");
+  });
+
+  it("stores bytes in KV and records metadata in D1", async () => {
+    const puts: Array<{ key: string; value: ArrayBuffer }> = [];
+    const inserts: unknown[][] = [];
+    const store = {
+      async put(key: string, value: ArrayBuffer) {
+        puts.push({ key, value });
+      },
+      async get() {
+        return null;
+      },
+      async delete() {},
+    };
+    const database = {
+      prepare(sql: string) {
+        return {
+          bind(...params: unknown[]) {
+            if (sql.startsWith("INSERT INTO media_objects")) {
+              inserts.push(params);
+              return { run: async () => ({ meta: { changes: 1 } }) };
+            }
+            return {
+              first: async () => null,
+              all: async () => ({ results: [] }),
+              run: async () => ({ meta: { changes: 0 } }),
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const bytes = new TextEncoder().encode("hello-image").buffer;
+    const stored = await storeUploadedMedia({
+      database,
+      store,
+      uploaderUserId: "user-1",
+      filename: "shot.png",
+      contentType: "image/png",
+      bytes,
+    });
+    expect(stored.ok).toBe(true);
+    if (!stored.ok) return;
+    expect(puts).toHaveLength(1);
+    expect(puts[0]?.key).toContain("media/blob/user-1/");
+    expect(inserts[0]?.[2]).toBe(puts[0]?.key);
+    expect(stored.media.contentType).toBe("image/png");
   });
 });

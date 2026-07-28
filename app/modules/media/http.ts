@@ -1,11 +1,20 @@
 import { getSession } from "@/modules/identity/auth.server";
 
 import { authorizeMediaRead } from "./access";
-import { mediaObjectPublicPath, storeUploadedMedia } from "./storage";
+import {
+  loadMediaBytes,
+  mediaObjectPublicPath,
+  storeUploadedMedia,
+} from "./storage";
 import { validateUploadFile } from "./validation";
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status });
+}
+
+function mediaStore(env: Env) {
+  // Reuse existing free Fedify KV. No R2 / payment method required.
+  return env.FEDIFY_KV;
 }
 
 export async function handleMediaUpload(request: Request, env: Env) {
@@ -16,7 +25,8 @@ export async function handleMediaUpload(request: Request, env: Env) {
   if (!session) {
     return json({ ok: false, message: "请先登录。" }, 401);
   }
-  if (!env.MEDIA_BUCKET) {
+  const store = mediaStore(env);
+  if (!store) {
     return json({ ok: false, message: "媒体存储未配置。" }, 503);
   }
 
@@ -43,7 +53,7 @@ export async function handleMediaUpload(request: Request, env: Env) {
   const bytes = await file.arrayBuffer();
   const stored = await storeUploadedMedia({
     database: env.DB,
-    bucket: env.MEDIA_BUCKET,
+    store,
     uploaderUserId: session.user.id,
     filename: file.name || preliminary.originalFilename,
     contentType,
@@ -74,7 +84,8 @@ export async function handleMediaDownload(request: Request, env: Env) {
   const match = url.pathname.match(/^\/media\/([a-zA-Z0-9_-]{8,128})$/);
   if (!match) return null;
 
-  if (!env.MEDIA_BUCKET) {
+  const store = mediaStore(env);
+  if (!store) {
     return new Response("Media storage unavailable", { status: 503 });
   }
 
@@ -88,8 +99,8 @@ export async function handleMediaDownload(request: Request, env: Env) {
     return new Response("Not found", { status: access.status });
   }
 
-  const object = await env.MEDIA_BUCKET.get(access.media.r2Key);
-  if (!object) {
+  const bytes = await loadMediaBytes(store, access.media.r2Key);
+  if (!bytes) {
     return new Response("Not found", { status: 404 });
   }
 
@@ -110,7 +121,7 @@ export async function handleMediaDownload(request: Request, env: Env) {
   if (request.method === "HEAD") {
     return new Response(null, { status: 200, headers });
   }
-  return new Response(object.body, { status: 200, headers });
+  return new Response(bytes, { status: 200, headers });
 }
 
 export async function handleMediaHttp(request: Request, env: Env) {
