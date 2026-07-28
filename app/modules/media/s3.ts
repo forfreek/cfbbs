@@ -95,19 +95,39 @@ function normalizeEndpoint(endpoint: string) {
   return url;
 }
 
+function cleanEnvValue(value: string | undefined) {
+  if (!value) return "";
+  let cleaned = value.trim();
+  // Allow .env lines that still carry an inline comment.
+  const hash = cleaned.indexOf(" #");
+  if (hash >= 0) cleaned = cleaned.slice(0, hash).trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
+
 export function parseS3MediaConfig(
   env: Record<string, string | undefined> | Env,
 ): S3MediaConfig | null {
-  const endpoint = env.S3_ENDPOINT?.trim();
-  const bucket = env.S3_BUCKET?.trim();
-  const accessKeyId = env.S3_ACCESS_KEY_ID?.trim();
-  const secretAccessKey = env.S3_SECRET_ACCESS_KEY?.trim();
+  let endpoint = cleanEnvValue(env.S3_ENDPOINT);
+  const bucket = cleanEnvValue(env.S3_BUCKET);
+  const accessKeyId = cleanEnvValue(env.S3_ACCESS_KEY_ID);
+  const secretAccessKey = cleanEnvValue(env.S3_SECRET_ACCESS_KEY);
   if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
     return null;
   }
-  const region = env.S3_REGION?.trim() || "auto";
-  const forcePathStyle =
-    (env.S3_FORCE_PATH_STYLE ?? "true").trim().toLowerCase() !== "false";
+  if (!/^https?:\/\//i.test(endpoint)) {
+    endpoint = `https://${endpoint}`;
+  }
+  const region = cleanEnvValue(env.S3_REGION) || "auto";
+  const forceRaw = cleanEnvValue(env.S3_FORCE_PATH_STYLE) || "true";
+  const forcePathStyle = !["false", "0", "no", "off"].includes(
+    forceRaw.toLowerCase(),
+  );
   return {
     endpoint,
     region,

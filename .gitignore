@@ -209,3 +209,6 @@ dist
 
 ### Local federation verification artifacts ###
 .tmp-*
+
+# local object-storage secrets
+s3.env
