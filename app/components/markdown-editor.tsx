@@ -4,7 +4,7 @@ import { useFetcher } from "react-router";
 import {
   maxAttachmentsPerPost,
   type MediaAttachmentView,
-} from "@/modules/media";
+} from "@/modules/media/types";
 
 type MarkdownPreviewResponse =
   | { ok: true; html: string }
