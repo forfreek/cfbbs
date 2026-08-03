@@ -82,17 +82,11 @@ async function requireRemoteActor(
   query: string,
 ): Promise<
   | { ok: true; following: ResolvedRemoteActor; query: string }
-  | { ok: false; response: Response }
+  | { ok: false; error: string }
 > {
   const remoteTarget = parseRemoteLookupTarget(query);
   if (!remoteTarget) {
-    return {
-      ok: false,
-      response: data(
-        { error: "请提供完整的远端 handle 或 HTTPS Actor URL。" },
-        { status: 400 },
-      ),
-    };
+    return { ok: false, error: "请提供完整的远端 handle 或 HTTPS Actor URL。" };
   }
   const following = await resolveRemoteActorForFollow(remoteTarget);
   return { ok: true, following, query };
@@ -117,7 +111,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   try {
     const resolved = await requireRemoteActor(query);
-    if (!resolved.ok) return resolved.response;
+    if (!resolved.ok) return data({ error: resolved.error }, { status: 400 });
     const { following } = resolved;
 
     if (intent === "follow-remote") {

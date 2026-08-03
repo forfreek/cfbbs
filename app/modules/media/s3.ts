@@ -7,6 +7,15 @@ export type S3MediaConfig = {
   forcePathStyle: boolean;
 };
 
+export type S3Environment = {
+  S3_ENDPOINT?: string;
+  S3_BUCKET?: string;
+  S3_ACCESS_KEY_ID?: string;
+  S3_SECRET_ACCESS_KEY?: string;
+  S3_REGION?: string;
+  S3_FORCE_PATH_STYLE?: string;
+};
+
 export type MediaBlobStore = {
   put(
     key: string,
@@ -22,8 +31,9 @@ export type MediaBlobStore = {
 };
 
 function encodeRfc3986(value: string) {
-  return encodeURIComponent(value).replace(/[!'()*]/g, (char) =>
-    `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 }
 
@@ -41,7 +51,10 @@ function toHex(buffer: ArrayBuffer) {
 }
 
 function toAmzDate(date: Date) {
-  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  return date
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
 }
 
 async function sha256Hex(data: ArrayBuffer | string) {
@@ -68,11 +81,7 @@ async function hmac(
     false,
     ["sign"],
   );
-  return crypto.subtle.sign(
-    "HMAC",
-    cryptoKey,
-    new TextEncoder().encode(data),
-  );
+  return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
 }
 
 async function deriveSigningKey(
@@ -110,9 +119,7 @@ function cleanEnvValue(value: string | undefined) {
   return cleaned;
 }
 
-export function parseS3MediaConfig(
-  env: Record<string, string | undefined> | Env,
-): S3MediaConfig | null {
+export function parseS3MediaConfig(env: S3Environment): S3MediaConfig | null {
   let endpoint = cleanEnvValue(env.S3_ENDPOINT);
   const bucket = cleanEnvValue(env.S3_BUCKET);
   const accessKeyId = cleanEnvValue(env.S3_ACCESS_KEY_ID);
@@ -178,7 +185,9 @@ async function signedFetch(
     .map((name) => name.toLowerCase())
     .sort();
   const canonicalHeaders = signedHeaderNames
-    .map((name) => `${name}:${headers.get(name)!.trim().replace(/\s+/g, " ")}\n`)
+    .map(
+      (name) => `${name}:${headers.get(name)!.trim().replace(/\s+/g, " ")}\n`,
+    )
     .join("");
   const signedHeaders = signedHeaderNames.join(";");
   const canonicalQuery = [...url.searchParams.entries()]
@@ -280,7 +289,7 @@ export function createS3MediaStore(config: S3MediaConfig): MediaBlobStore {
 }
 
 export function createMediaStoreFromEnv(env: Env): MediaBlobStore | null {
-  const config = parseS3MediaConfig(env);
+  const config = parseS3MediaConfig(env as unknown as S3Environment);
   if (!config) return null;
   return createS3MediaStore(config);
 }

@@ -104,7 +104,7 @@ describe("public ActivityPub Note lookup", () => {
         headers: { accept: "application/activity+json" },
       }),
       {
-        prepare(sql: string) {
+        prepare() {
           return {
             bind() {
               return {
