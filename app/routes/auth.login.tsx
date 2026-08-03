@@ -25,7 +25,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   };
   if (!response.ok || !payload.user?.username)
     return data(
-      { error: payload.message ?? "Sign-in failed." },
+      { error: payload.message ?? "登录失败，请检查用户名和密码。" },
       { status: response.status },
     );
   return redirect(`/users/${payload.user.username}`, {
@@ -37,7 +37,7 @@ export default function Login() {
   const actionData = useActionData<typeof action>();
   return (
     <main className="mx-auto max-w-md px-6 py-16">
-      <h1 className="text-2xl font-semibold">Welcome back</h1>
+      <h1 className="text-2xl font-semibold">欢迎回来</h1>
       {actionData?.error && (
         <p role="alert" className="text-destructive mt-4 text-sm">
           {actionData.error}
@@ -45,7 +45,7 @@ export default function Login() {
       )}
       <Form method="post" className="mt-6 grid gap-4">
         <label>
-          Handle
+          用户名
           <input
             required
             name="username"
@@ -53,7 +53,7 @@ export default function Login() {
           />
         </label>
         <label>
-          Password
+          密码
           <input
             required
             name="password"
@@ -62,13 +62,13 @@ export default function Login() {
           />
         </label>
         <button className="bg-primary text-primary-foreground rounded-md px-4 py-2">
-          Sign in
+          登录
         </button>
       </Form>
       <p className="mt-5 text-sm">
-        New here?{" "}
+        还没有账号？{" "}
         <Link className="underline" to="/auth/register">
-          Create an account
+          注册账号
         </Link>
       </p>
     </main>

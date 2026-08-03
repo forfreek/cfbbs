@@ -27,7 +27,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   };
   if (!response.ok || !payload.user?.username)
     return data(
-      { error: payload.message ?? "Registration failed." },
+      { error: payload.message ?? "注册失败，请稍后重试。" },
       { status: response.status },
     );
   return redirect(`/users/${payload.user.username}`, {
@@ -39,9 +39,9 @@ export default function Register() {
   const actionData = useActionData<typeof action>();
   return (
     <main className="mx-auto max-w-md px-6 py-16">
-      <h1 className="text-2xl font-semibold">Create your CFBBS account</h1>
+      <h1 className="text-2xl font-semibold">创建 CFBBS 账号</h1>
       <p className="text-muted-foreground mt-2 text-sm">
-        Your lowercase handle becomes your permanent federation identity.
+        用户名会成为你永久的联邦身份，创建后不可修改。
       </p>
       {actionData?.error && (
         <p role="alert" className="text-destructive mt-4 text-sm">
@@ -50,7 +50,7 @@ export default function Register() {
       )}
       <Form method="post" className="mt-6 grid gap-4">
         <label>
-          Name
+          昵称
           <input
             required
             name="name"
@@ -58,7 +58,7 @@ export default function Register() {
           />
         </label>
         <label>
-          Email
+          邮箱
           <input
             required
             name="email"
@@ -67,7 +67,7 @@ export default function Register() {
           />
         </label>
         <label>
-          Handle
+          用户名
           <input
             required
             name="username"
@@ -78,7 +78,7 @@ export default function Register() {
           />
         </label>
         <label>
-          Password
+          密码
           <input
             required
             name="password"
@@ -88,13 +88,13 @@ export default function Register() {
           />
         </label>
         <button className="bg-primary text-primary-foreground rounded-md px-4 py-2">
-          Create account
+          创建账号
         </button>
       </Form>
       <p className="mt-5 text-sm">
-        Already registered?{" "}
+        已有账号？{" "}
         <Link className="underline" to="/auth/login">
-          Sign in
+          登录
         </Link>
       </p>
     </main>

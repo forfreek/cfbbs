@@ -41,9 +41,9 @@ export default function SettingsProfile({ loaderData }: Route.ComponentProps) {
   const { profile } = loaderData;
   return (
     <main className="mx-auto max-w-xl px-6 py-16">
-      <h1 className="text-2xl font-semibold">Edit profile</h1>
+      <h1 className="text-2xl font-semibold">编辑个人资料</h1>
       <p className="text-muted-foreground mt-2 text-sm">
-        Your handle @{profile.handle} is permanent.
+        联邦用户名 @{profile.handle} 创建后不可修改。
       </p>
       {actionData?.error && (
         <p role="alert" className="text-destructive mt-4 text-sm">
@@ -52,7 +52,7 @@ export default function SettingsProfile({ loaderData }: Route.ComponentProps) {
       )}
       <Form method="post" className="mt-6 grid gap-4">
         <label>
-          Display name
+          显示名称
           <input
             name="displayName"
             defaultValue={profile.displayName}
@@ -62,7 +62,7 @@ export default function SettingsProfile({ loaderData }: Route.ComponentProps) {
           />
         </label>
         <label>
-          Biography
+          个人简介
           <textarea
             name="bio"
             defaultValue={profile.bio}
@@ -72,7 +72,7 @@ export default function SettingsProfile({ loaderData }: Route.ComponentProps) {
           />
         </label>
         <label>
-          Avatar URL
+          头像地址
           <input
             name="avatarUrl"
             type="url"
@@ -81,7 +81,7 @@ export default function SettingsProfile({ loaderData }: Route.ComponentProps) {
           />
         </label>
         <button className="bg-primary text-primary-foreground rounded-md px-4 py-2">
-          Save profile
+          保存资料
         </button>
       </Form>
     </main>
