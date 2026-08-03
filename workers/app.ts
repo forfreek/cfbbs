@@ -28,6 +28,28 @@ const requestHandler = createRequestHandler(
   import.meta.env.MODE,
 );
 
+// Cloudflare JavaScript Detections mutates HTML responses by appending a
+// challenge script and hidden iframe. React Router hydrates the whole
+// document, so that mutation makes the server and client trees diverge.
+function preventCloudflareHtmlMutation(response: Response) {
+  const contentType = response.headers.get("content-type")?.toLowerCase();
+  if (!contentType?.startsWith("text/html")) return response;
+
+  const headers = new Headers(response.headers);
+  const cacheControl = headers.get("cache-control");
+  if (!cacheControl) {
+    headers.set("cache-control", "no-transform");
+  } else if (!/\bno-transform\b/i.test(cacheControl)) {
+    headers.set("cache-control", `${cacheControl}, no-transform`);
+  }
+
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
 async function recordTestFederationFailure(env: Env, error: unknown) {
   if (env.FEDIFY_ALLOW_PRIVATE_ADDRESS !== "true") return;
 
@@ -91,7 +113,7 @@ export default {
 
     const federation = await createWorkerFederation(env);
     try {
-      return await federation.fetch(request, {
+      const response = await federation.fetch(request, {
         contextData: env,
         onNotFound: (unmatchedRequest) =>
           requestHandler(unmatchedRequest, {
@@ -102,6 +124,7 @@ export default {
             cloudflare: { env, ctx },
           }),
       });
+      return preventCloudflareHtmlMutation(response);
     } catch (error) {
       ctx.waitUntil(recordTestFederationFailure(env, error));
       throw error;
