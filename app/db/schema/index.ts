@@ -596,7 +596,10 @@ export const mediaObjects = sqliteTable(
   },
   (table) => [
     uniqueIndex("media_objects_r2_key_unique").on(table.r2Key),
-    index("media_objects_uploader_index").on(table.uploaderUserId, table.createdAt),
+    index("media_objects_uploader_index").on(
+      table.uploaderUserId,
+      table.createdAt,
+    ),
   ],
 );
 

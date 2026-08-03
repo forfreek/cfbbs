@@ -1,7 +1,4 @@
-export {
-  authorizeMediaRead,
-  loadMediaAccessContext,
-} from "./access";
+export { authorizeMediaRead, loadMediaAccessContext } from "./access";
 export {
   mediaRecordsToNoteAttachments,
   type NoteAttachmentJson,

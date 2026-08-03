@@ -75,32 +75,35 @@ describe("media upload validation", () => {
 
 describe("note attachment mapping", () => {
   it("maps local media records into ActivityPub Image/Document attachments", () => {
-    const attachments = mediaRecordsToNoteAttachments("https://bbs.example.test", [
-      {
-        id: "mediaone123",
-        uploaderUserId: "user-1",
-        r2Key: "media/user-1/mediaone123.png",
-        contentType: "image/png",
-        byteSize: 12,
-        sha256: "abc",
-        originalFilename: "shot.png",
-        kind: "image",
-        createdAt: "2026-07-19T00:00:00.000Z",
-        deletedAt: null,
-      },
-      {
-        id: "mediadoc1234",
-        uploaderUserId: "user-1",
-        r2Key: "media/user-1/mediadoc1234.pdf",
-        contentType: "application/pdf",
-        byteSize: 20,
-        sha256: "def",
-        originalFilename: "notes.pdf",
-        kind: "document",
-        createdAt: "2026-07-19T00:00:00.000Z",
-        deletedAt: null,
-      },
-    ]);
+    const attachments = mediaRecordsToNoteAttachments(
+      "https://bbs.example.test",
+      [
+        {
+          id: "mediaone123",
+          uploaderUserId: "user-1",
+          r2Key: "media/user-1/mediaone123.png",
+          contentType: "image/png",
+          byteSize: 12,
+          sha256: "abc",
+          originalFilename: "shot.png",
+          kind: "image",
+          createdAt: "2026-07-19T00:00:00.000Z",
+          deletedAt: null,
+        },
+        {
+          id: "mediadoc1234",
+          uploaderUserId: "user-1",
+          r2Key: "media/user-1/mediadoc1234.pdf",
+          contentType: "application/pdf",
+          byteSize: 20,
+          sha256: "def",
+          originalFilename: "notes.pdf",
+          kind: "document",
+          createdAt: "2026-07-19T00:00:00.000Z",
+          deletedAt: null,
+        },
+      ],
+    );
     expect(attachments).toEqual([
       {
         type: "Image",
@@ -207,8 +210,6 @@ describe("private media access", () => {
   });
 });
 
-
-
 describe("media s3 storage", () => {
   it("builds stable object keys under the media prefix", () => {
     expect(
@@ -297,7 +298,10 @@ describe("media s3 storage", () => {
     const requests: Array<{ url: string; method: string; headers: Headers }> =
       [];
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
       const request = new Request(input, init);
       requests.push({
         url: request.url,

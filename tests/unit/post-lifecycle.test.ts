@@ -141,8 +141,10 @@ describe("post lifecycle contract", () => {
       }),
     ).resolves.toBe(true);
     expect(
-      batches[0]?.some((statement) =>
-        Array.isArray(statement.params) && statement.params.includes("Delete"),
+      batches[0]?.some(
+        (statement) =>
+          Array.isArray(statement.params) &&
+          statement.params.includes("Delete"),
       ),
     ).toBe(true);
     expect(

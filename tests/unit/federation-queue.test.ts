@@ -90,7 +90,6 @@ describe("federation queue consumer", () => {
     expect(results).toEqual({ acknowledged: 0, retried: 1 });
   });
 
-
   it("unwraps Cloudflare Fedify queue envelopes before type detection", () => {
     expect(
       unwrapFedifyQueueMessage({

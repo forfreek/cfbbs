@@ -73,7 +73,8 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
   const form = await request.formData();
   const attachments = validateAttachmentIds(form.getAll("attachmentIds"));
-  if (!attachments.ok) return data({ error: attachments.message }, { status: 400 });
+  if (!attachments.ok)
+    return data({ error: attachments.message }, { status: 400 });
   const linked = await replacePostAttachments(context.cloudflare.env.DB, {
     postId: post.id,
     authorUserId: post.authorUserId!,

@@ -7,12 +7,10 @@ import {
 } from "@/modules/media/types";
 
 type MarkdownPreviewResponse =
-  | { ok: true; html: string }
-  | { ok: false; message: string };
+  { ok: true; html: string } | { ok: false; message: string };
 
 type MediaUploadResponse =
-  | { ok: true; media: MediaAttachmentView }
-  | { ok: false; message: string };
+  { ok: true; media: MediaAttachmentView } | { ok: false; message: string };
 
 export function MarkdownEditor({
   defaultValue = "",
@@ -109,7 +107,9 @@ export function MarkdownEditor({
               <input
                 accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.zip,image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,application/zip"
                 className="sr-only"
-                disabled={uploading || attachments.length >= maxAttachmentsPerPost}
+                disabled={
+                  uploading || attachments.length >= maxAttachmentsPerPost
+                }
                 multiple
                 onChange={(event) => {
                   void onFileSelected(event.currentTarget.files);

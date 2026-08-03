@@ -103,7 +103,6 @@ export function createNoteDeleteActivity(
   };
 }
 
-
 async function resolveNoteMedia(
   database: D1Database,
   input: {

@@ -88,7 +88,8 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   });
   if (!input.ok) return data({ error: input.message }, { status: 400 });
   const attachments = validateAttachmentIds(form.getAll("attachmentIds"));
-  if (!attachments.ok) return data({ error: attachments.message }, { status: 400 });
+  if (!attachments.ok)
+    return data({ error: attachments.message }, { status: 400 });
 
   const threadId = crypto.randomUUID();
   await createThread(context.cloudflare.env.DB, {
