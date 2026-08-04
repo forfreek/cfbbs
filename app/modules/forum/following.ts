@@ -64,6 +64,8 @@ export async function listFollowingFeed(
     ? [
         userId,
         userId,
+        userId,
+        userId,
         cursor.publishedAt,
         cursor.publishedAt,
         cursor.itemId,
@@ -71,7 +73,7 @@ export async function listFollowingFeed(
         cursor.source,
         51,
       ]
-    : [userId, userId, 51];
+    : [userId, userId, userId, userId, 51];
   const rows = await database
     .prepare(
       `WITH feed AS (
@@ -111,6 +113,51 @@ export async function listFollowingFeed(
         WHERE federation_follows.follower_actor_id = ?
           AND federation_follows.state = 'accepted'
           AND federation_objects.type = 'Note' AND federation_objects.deleted_at IS NULL
+        UNION ALL
+        SELECT 'local' AS source,
+               'boost:' || post_boosts.id AS itemId,
+               post_boosts.created_at AS publishedAt,
+               post_boosts.created_at AS updatedAt,
+               booster.id AS actorId,
+               NULL AS actorUri,
+               booster_profile.handle AS actorHandle,
+               booster_profile.display_name AS actorName,
+               boosted.rendered_html AS contentHtml,
+               boosted.thread_id AS threadId,
+               boosted.id AS postId,
+               boosted.federation_object_id AS objectUri
+        FROM post_boosts
+        INNER JOIN user AS booster ON booster.id = post_boosts.actor_id
+        INNER JOIN profiles AS booster_profile ON booster_profile.user_id = booster.id
+        INNER JOIN posts AS boosted ON boosted.id = post_boosts.post_id
+        INNER JOIN threads AS boosted_thread ON boosted_thread.id = boosted.thread_id
+        INNER JOIN boards AS boosted_board ON boosted_board.id = boosted_thread.board_id
+        INNER JOIN local_follows ON local_follows.following_user_id = booster.id
+        WHERE local_follows.follower_user_id = ?
+          AND post_boosts.revoked_at IS NULL
+          AND boosted.visibility = 'public' AND boosted.state = 'published' AND boosted_board.visibility = 'public'
+        UNION ALL
+        SELECT 'remote' AS source,
+               'boost:' || post_boosts.id AS itemId,
+               post_boosts.created_at AS publishedAt,
+               post_boosts.created_at AS updatedAt,
+               boost_actor.id AS actorId,
+               boost_actor.uri AS actorUri,
+               boost_actor.handle AS actorHandle,
+               boost_actor.name AS actorName,
+               boosted.rendered_html AS contentHtml,
+               boosted.thread_id AS threadId,
+               boosted.id AS postId,
+               boosted.federation_object_id AS objectUri
+        FROM post_boosts
+        INNER JOIN federation_actors AS boost_actor ON boost_actor.uri = post_boosts.actor_id AND boost_actor.is_local = 0
+        INNER JOIN federation_follows AS boost_follow ON boost_follow.following_actor_id = boost_actor.id AND boost_follow.state = 'accepted'
+        INNER JOIN posts AS boosted ON boosted.id = post_boosts.post_id
+        INNER JOIN threads AS boosted_thread ON boosted_thread.id = boosted.thread_id
+        INNER JOIN boards AS boosted_board ON boosted_board.id = boosted_thread.board_id
+        WHERE boost_follow.follower_actor_id = ?
+          AND post_boosts.revoked_at IS NULL
+          AND boosted.visibility = 'public' AND boosted.state = 'published' AND boosted_board.visibility = 'public'
       )
       SELECT * FROM feed ${predicate}
       ORDER BY publishedAt DESC, itemId DESC, source DESC
