@@ -973,6 +973,130 @@ main:not(.forum-page) .prose {
   background-color: #d85d36 !important;
 }
 
+/* Dark theme bridge for legacy utility classes. Keep existing route markup
+   readable while its fixed Tailwind colors are gradually migrated. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] .app-header {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+:root[data-theme="dark"] .brand,
+:root[data-theme="dark"] main:not(.forum-page) h1,
+:root[data-theme="dark"] main:not(.forum-page) h2,
+:root[data-theme="dark"] main:not(.forum-page) h3 {
+  color: var(--foreground);
+}
+
+:root[data-theme="dark"] main:not(.forum-page) input,
+:root[data-theme="dark"] main:not(.forum-page) textarea,
+:root[data-theme="dark"] main:not(.forum-page) select {
+  border-color: var(--input);
+  background: var(--background);
+  color: var(--foreground);
+  caret-color: var(--primary);
+}
+
+:root[data-theme="dark"] main:not(.forum-page) .rounded-lg.border,
+:root[data-theme="dark"] main:not(.forum-page) .rounded-md.border,
+:root[data-theme="dark"] .bg-white {
+  border-color: var(--border);
+  background: var(--card) !important;
+  color: var(--card-foreground);
+}
+
+:root[data-theme="dark"] .bg-slate-50,
+:root[data-theme="dark"] .bg-slate-50\/30,
+:root[data-theme="dark"] .bg-gray-50 {
+  background-color: var(--muted) !important;
+}
+
+:root[data-theme="dark"] .hover\:bg-white:hover,
+:root[data-theme="dark"] .hover\:bg-slate-50:hover,
+:root[data-theme="dark"] .hover\:bg-slate-700:hover {
+  background-color: var(--secondary) !important;
+}
+
+:root[data-theme="dark"] .text-slate-950,
+:root[data-theme="dark"] .text-slate-900,
+:root[data-theme="dark"] .text-slate-700,
+:root[data-theme="dark"] .text-slate-600,
+:root[data-theme="dark"] .text-slate-500,
+:root[data-theme="dark"] .text-slate-400,
+:root[data-theme="dark"] .text-gray-700,
+:root[data-theme="dark"] .text-gray-600,
+:root[data-theme="dark"] .text-gray-500 {
+  color: var(--muted-foreground) !important;
+}
+
+:root[data-theme="dark"] main:not(.forum-page) .prose,
+:root[data-theme="dark"] main:not(.forum-page) .prose-slate {
+  color: var(--foreground);
+}
+
+:root[data-theme="dark"] .border,
+:root[data-theme="dark"] .border-b,
+:root[data-theme="dark"] .border-t,
+:root[data-theme="dark"] .border-l,
+:root[data-theme="dark"] .border-r {
+  border-color: var(--border);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .app-header {
+    border-color: var(--border);
+    background: var(--card);
+  }
+
+  :root[data-theme="system"] main:not(.forum-page) h1,
+  :root[data-theme="system"] main:not(.forum-page) h2,
+  :root[data-theme="system"] main:not(.forum-page) h3,
+  :root[data-theme="system"] .brand {
+    color: var(--foreground);
+  }
+
+  :root[data-theme="system"] main:not(.forum-page) input,
+  :root[data-theme="system"] main:not(.forum-page) textarea,
+  :root[data-theme="system"] main:not(.forum-page) select {
+    border-color: var(--input);
+    background: var(--background);
+    color: var(--foreground);
+    caret-color: var(--primary);
+  }
+
+  :root[data-theme="system"] main:not(.forum-page) .rounded-lg.border,
+  :root[data-theme="system"] main:not(.forum-page) .rounded-md.border,
+  :root[data-theme="system"] .bg-white {
+    border-color: var(--border);
+    background: var(--card) !important;
+    color: var(--card-foreground);
+  }
+
+  :root[data-theme="system"] .bg-slate-50,
+  :root[data-theme="system"] .bg-slate-50\/30,
+  :root[data-theme="system"] .bg-gray-50,
+  :root[data-theme="system"] .hover\:bg-white:hover,
+  :root[data-theme="system"] .hover\:bg-slate-50:hover,
+  :root[data-theme="system"] .hover\:bg-slate-700:hover {
+    background-color: var(--muted) !important;
+  }
+
+  :root[data-theme="system"] .text-slate-950,
+  :root[data-theme="system"] .text-slate-900,
+  :root[data-theme="system"] .text-slate-700,
+  :root[data-theme="system"] .text-slate-600,
+  :root[data-theme="system"] .text-slate-500,
+  :root[data-theme="system"] .text-slate-400,
+  :root[data-theme="system"] .text-gray-700,
+  :root[data-theme="system"] .text-gray-600,
+  :root[data-theme="system"] .text-gray-500 {
+    color: var(--muted-foreground) !important;
+  }
+}
+
 .border,
 .border-b,
 .border-t,
