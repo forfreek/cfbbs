@@ -11,6 +11,12 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import { AppShell } from "./components/app-shell";
 import { getSession } from "./modules/identity/auth.server";
+import { countUnreadNotifications } from "./modules/forum/notifications/read.server";
+import {
+  localeFromAcceptLanguage,
+  type Locale,
+  type Theme,
+} from "./modules/i18n/messages";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -39,7 +45,23 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       throw error;
     }
   }
-  return { session };
+  const unreadNotifications = session
+    ? await countUnreadNotifications(context.cloudflare.env.DB, session.user.id)
+    : 0;
+  const cookie = request.headers.get("Cookie") ?? "";
+  const localeCookie = cookie.match(/(?:^|;\s*)cfbbs\.locale=([^;]+)/)?.[1];
+  const themeCookie = cookie.match(/(?:^|;\s*)cfbbs\.theme=([^;]+)/)?.[1];
+  const locale: Locale =
+    localeCookie === "en-US" || localeCookie === "zh-CN"
+      ? localeCookie
+      : localeFromAcceptLanguage(request.headers.get("Accept-Language"));
+  const theme: Theme =
+    themeCookie === "light" ||
+    themeCookie === "dark" ||
+    themeCookie === "system"
+      ? themeCookie
+      : "system";
+  return { session, unreadNotifications, locale, theme };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -62,7 +84,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App({ loaderData }: Route.ComponentProps) {
   return (
-    <AppShell session={loaderData.session}>
+    <AppShell
+      session={loaderData.session}
+      unreadNotifications={loaderData.unreadNotifications}
+      initialLocale={loaderData.locale}
+      initialTheme={loaderData.theme}
+    >
       <Outlet />
     </AppShell>
   );

@@ -8,6 +8,10 @@ import {
   loadOwnedMediaByIds,
   postAttachmentInsertStatements,
 } from "@/modules/media";
+import { loadMentionedUserIds } from "@/modules/forum/mentions";
+import { listThreadSubscriptionRecipients } from "@/modules/forum/subscriptions";
+import { syncPostContentMetadata } from "@/modules/forum/content";
+import { createPoll } from "@/modules/forum/p2";
 
 export type NewReply = {
   postId: string;
@@ -19,6 +23,11 @@ export type NewReply = {
   visibility: "public" | "private";
   attachmentIds?: readonly string[];
   federation?: FederationPostPublication;
+  poll?: {
+    multiple: boolean;
+    closesAt: string | null;
+    options: readonly string[];
+  };
 };
 
 export async function createReply(database: D1Database, input: NewReply) {
@@ -56,8 +65,73 @@ export async function createReply(database: D1Database, input: NewReply) {
     updatedAt: now,
     parentPostId: input.parentPostId,
     attachmentIds,
+    markdown: input.markdown,
+    poll: input.poll,
     publication: input.federation,
   });
+  const mentionedUserIds = await loadMentionedUserIds(database, input.markdown);
+  const subscriptionRecipients = await listThreadSubscriptionRecipients(
+    database,
+    input.threadId,
+  );
+  const notificationRows = new Map<
+    string,
+    { id: string; type: "reply" | "mention" | "thread-reply" }
+  >();
+  if (
+    thread.firstPostAuthorUserId &&
+    thread.firstPostAuthorUserId !== input.authorUserId
+  ) {
+    notificationRows.set(thread.firstPostAuthorUserId, {
+      id: crypto.randomUUID(),
+      type: "reply",
+    });
+  }
+  for (const userId of mentionedUserIds) {
+    if (userId !== input.authorUserId) {
+      notificationRows.set(userId, {
+        id: crypto.randomUUID(),
+        type: "mention",
+      });
+    }
+  }
+  for (const recipient of subscriptionRecipients.results) {
+    if (recipient.userId === input.authorUserId) continue;
+    if (
+      recipient.mode === "mentions" &&
+      !mentionedUserIds.includes(recipient.userId)
+    )
+      continue;
+    if (notificationRows.has(recipient.userId)) continue;
+    notificationRows.set(recipient.userId, {
+      id: crypto.randomUUID(),
+      type: "thread-reply",
+    });
+  }
+  const notificationStatements = [...notificationRows.entries()].flatMap(
+    ([recipientUserId, notification]) => [
+      database
+        .prepare(
+          "INSERT INTO notifications (id, recipient_user_id, actor_id, type, thread_id, post_id, read_at, created_at) SELECT ?, ?, ?, ?, ?, ?, NULL, ? WHERE NOT EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = ?)",
+        )
+        .bind(
+          notification.id,
+          recipientUserId,
+          input.authorUserId,
+          notification.type,
+          input.threadId,
+          input.postId,
+          now,
+          recipientUserId,
+          input.authorUserId,
+        ),
+      database
+        .prepare(
+          "INSERT OR IGNORE INTO notification_push_outbox (id, notification_id, state, attempts, next_attempt_at, last_error, created_at, sent_at) SELECT ?, ?, 'pending', 0, ?, NULL, ?, NULL WHERE EXISTS (SELECT 1 FROM notifications WHERE id = ?)",
+        )
+        .bind(crypto.randomUUID(), notification.id, now, now, notification.id),
+    ],
+  );
   await database.batch([
     database
       .prepare(
@@ -106,25 +180,14 @@ export async function createReply(database: D1Database, input: NewReply) {
             .bind(input.postId, input.threadId, input.markdown, input.threadId),
         ]
       : []),
-    ...(thread.firstPostAuthorUserId &&
-    thread.firstPostAuthorUserId !== input.authorUserId
-      ? [
-          database
-            .prepare(
-              "INSERT INTO notifications (id, recipient_user_id, actor_id, type, thread_id, post_id, read_at, created_at) SELECT ?, ?, ?, 'reply', ?, ?, NULL, ? WHERE NOT EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = ?)",
-            )
-            .bind(
-              crypto.randomUUID(),
-              thread.firstPostAuthorUserId,
-              input.authorUserId,
-              input.threadId,
-              input.postId,
-              now,
-              thread.firstPostAuthorUserId,
-              input.authorUserId,
-            ),
-        ]
-      : []),
+    ...notificationStatements,
     ...(outbox ? [outbox] : []),
   ]);
+  await syncPostContentMetadata(database, {
+    postId: input.postId,
+    markdown: input.markdown,
+    createdAt: now,
+  });
+  if (input.poll)
+    await createPoll(database, { postId: input.postId, ...input.poll });
 }

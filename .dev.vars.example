@@ -5,6 +5,9 @@ EMAIL_MODE=disabled
 EMAIL_FROM=cfbbs-test@lukelzlz.top
 # EMAIL_GATEWAY_URL=https://mail-gateway.example/email-gateway/
 # EMAIL_GATEWAY_TOKEN=replace-with-a-long-random-token
+# VAPID_PUBLIC_KEY=replace-with-test-public-key
+# VAPID_PRIVATE_JWK={"kty":"EC","crv":"P-256","x":"...","y":"...","d":"..."}
+VAPID_SUBJECT=mailto:cfbbs-test@lukelzlz.top
 
 # Optional S3-compatible object storage for media attachments
 S3_ENDPOINT=https://s3.example.test

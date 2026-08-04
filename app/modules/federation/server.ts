@@ -7,12 +7,14 @@ import {
 import { getDocumentLoader } from "@fedify/vocab-runtime";
 import {
   Accept,
+  Announce,
   Create,
   CryptographicKey,
   Delete,
   Endpoints,
   Follow,
   Like,
+  EmojiReact,
   Note,
   Person,
   PUBLIC_COLLECTION,
@@ -54,6 +56,7 @@ import {
   extractRemoteNoteAttachments,
   replaceRemoteObjectAttachments,
 } from "@/modules/media";
+import { parseRemoteNoteMetadata } from "./p2";
 
 export type FederationEnvironment = Pick<
   Env,
@@ -410,6 +413,18 @@ async function loadLocalLikeTarget(
     .first<LocalLikeTarget>();
 }
 
+async function loadLocalPublicObjectTarget(
+  database: D1Database,
+  objectUri: string,
+) {
+  return database
+    .prepare(
+      "SELECT posts.id AS postId, posts.thread_id AS threadId, posts.author_user_id AS authorUserId FROM posts INNER JOIN threads ON threads.id = posts.thread_id INNER JOIN boards ON boards.id = threads.board_id WHERE posts.federation_object_id = ? AND posts.state = 'published' AND posts.visibility = 'public' AND boards.visibility = 'public' LIMIT 1",
+    )
+    .bind(objectUri)
+    .first<{ postId: string; threadId: string; authorUserId: string | null }>();
+}
+
 async function resolveRemoteFollower(
   context: InboxContext<FederationEnvironment>,
   follow: Follow,
@@ -552,11 +567,130 @@ export async function processInboundUndo(
         actorUri,
       });
       if (!undoneLike) {
-        throw new RejectedInboundActivity(
-          "Follow relationship or Like activity is not active.",
-        );
+        const reaction = await context.data.DB.prepare(
+          "DELETE FROM post_reactions WHERE activity_id = ?",
+        )
+          .bind(followActivityId)
+          .run();
+        const boost =
+          reaction.meta.changes > 0
+            ? reaction
+            : await context.data.DB.prepare(
+                "UPDATE post_boosts SET revoked_at = ? WHERE activity_id = ? AND revoked_at IS NULL",
+              )
+                .bind(new Date().toISOString(), followActivityId)
+                .run();
+        if (boost.meta.changes === 0) {
+          throw new RejectedInboundActivity(
+            "Follow, Like, reaction or Boost is not active.",
+          );
+        }
       }
     }
+    await completeInboxActivity(context.data.DB, activityId);
+  } catch (error) {
+    if (error instanceof RejectedInboundActivity) {
+      await rejectInboxActivity(context.data.DB, activityId, error.message);
+      return;
+    }
+    await releaseInboxActivity(context.data.DB, activityId);
+    throw error;
+  }
+}
+
+export async function processInboundAnnounce(
+  context: InboxContext<FederationEnvironment>,
+  announce: Announce,
+) {
+  const activityId = announce.id?.href;
+  const actorUri = announce.actorId?.href;
+  const objectUri = announce.objectId?.href;
+  if (!activityId || !actorUri || !objectUri || !isSafeRemoteUrl(objectUri))
+    return;
+  if (!validateInboxActivity({ activityId, actorUri }).ok) return;
+  const claimed = await claimInboxActivity(context.data.DB, {
+    activityId,
+    actorUri,
+  });
+  if (!claimed) return;
+  try {
+    if (await isBlockedRemoteActor(context.data.DB, actorUri))
+      throw new RejectedInboundActivity("Remote actor or instance is blocked.");
+    if (!(await isRemoteActorFollowedByAnyLocalUser(context.data.DB, actorUri)))
+      throw new RejectedInboundActivity("Remote actor is not followed.");
+    const target = await loadLocalPublicObjectTarget(
+      context.data.DB,
+      objectUri,
+    );
+    if (!target)
+      throw new RejectedInboundActivity("Boost target is unavailable.");
+    await context.data.DB.prepare(
+      "INSERT OR IGNORE INTO post_boosts (id, post_id, actor_id, target_uri, activity_id, created_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+    )
+      .bind(
+        crypto.randomUUID(),
+        target.postId,
+        actorUri,
+        objectUri,
+        activityId,
+        new Date().toISOString(),
+      )
+      .run();
+    await completeInboxActivity(context.data.DB, activityId);
+  } catch (error) {
+    if (error instanceof RejectedInboundActivity) {
+      await rejectInboxActivity(context.data.DB, activityId, error.message);
+      return;
+    }
+    await releaseInboxActivity(context.data.DB, activityId);
+    throw error;
+  }
+}
+
+export async function processInboundEmojiReact(
+  context: InboxContext<FederationEnvironment>,
+  reaction: EmojiReact,
+) {
+  const activityId = reaction.id?.href;
+  const actorUri = reaction.actorId?.href;
+  const objectUri = reaction.objectId?.href;
+  const emoji = textValue(reaction.name);
+  if (
+    !activityId ||
+    !actorUri ||
+    !objectUri ||
+    !emoji ||
+    !isSafeRemoteUrl(objectUri)
+  )
+    return;
+  if (!validateInboxActivity({ activityId, actorUri }).ok) return;
+  const claimed = await claimInboxActivity(context.data.DB, {
+    activityId,
+    actorUri,
+  });
+  if (!claimed) return;
+  try {
+    if (await isBlockedRemoteActor(context.data.DB, actorUri))
+      throw new RejectedInboundActivity("Remote actor or instance is blocked.");
+    if (!(await isRemoteActorFollowedByAnyLocalUser(context.data.DB, actorUri)))
+      throw new RejectedInboundActivity("Remote actor is not followed.");
+    const target = await loadLocalPublicObjectTarget(
+      context.data.DB,
+      objectUri,
+    );
+    if (!target)
+      throw new RejectedInboundActivity("Reaction target is unavailable.");
+    await context.data.DB.prepare(
+      "INSERT OR IGNORE INTO post_reactions (post_id, actor_id, emoji, activity_id, custom_emoji_url, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+    )
+      .bind(
+        target.postId,
+        actorUri,
+        emoji,
+        activityId,
+        new Date().toISOString(),
+      )
+      .run();
     await completeInboxActivity(context.data.DB, activityId);
   } catch (error) {
     if (error instanceof RejectedInboundActivity) {
@@ -810,6 +944,94 @@ async function processInboundRemoteNoteActivity(
       objectUri: noteUri,
       attachments: extractRemoteNoteAttachments(noteJson),
     });
+    const metadata = parseRemoteNoteMetadata(noteJson);
+    const stored = await context.data.DB.prepare(
+      "SELECT id AS postId FROM posts WHERE federation_object_id = ? LIMIT 1",
+    )
+      .bind(noteUri)
+      .first<{ postId: string }>();
+    if (stored) {
+      const metadataStatements: D1PreparedStatement[] = [
+        context.data.DB.prepare(
+          "DELETE FROM post_hashtags WHERE post_id = ?",
+        ).bind(stored.postId),
+        context.data.DB.prepare(
+          "DELETE FROM post_mentions WHERE post_id = ?",
+        ).bind(stored.postId),
+        context.data.DB.prepare(
+          "DELETE FROM post_quotes WHERE post_id = ?",
+        ).bind(stored.postId),
+        context.data.DB.prepare(
+          "DELETE FROM poll_votes WHERE poll_post_id = ?",
+        ).bind(stored.postId),
+        context.data.DB.prepare(
+          "DELETE FROM poll_options WHERE poll_post_id = ?",
+        ).bind(stored.postId),
+        context.data.DB.prepare("DELETE FROM polls WHERE post_id = ?").bind(
+          stored.postId,
+        ),
+      ];
+      for (const tag of metadata.hashtags) {
+        metadataStatements.push(
+          context.data.DB.prepare(
+            "INSERT INTO hashtags (id, tag, display_name, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(tag) DO NOTHING",
+          ).bind(
+            crypto.randomUUID(),
+            tag.tag,
+            tag.displayName,
+            new Date().toISOString(),
+          ),
+          context.data.DB.prepare(
+            "INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id, created_at) SELECT ?, id, ? FROM hashtags WHERE tag = ?",
+          ).bind(stored.postId, new Date().toISOString(), tag.tag),
+        );
+      }
+      for (const mention of metadata.mentions) {
+        metadataStatements.push(
+          context.data.DB.prepare(
+            "INSERT OR IGNORE INTO post_mentions (id, post_id, mentioned_user_id, actor_uri, handle, created_at) VALUES (?, ?, (SELECT id FROM federation_actors WHERE uri = ? AND is_local = 1), ?, ?, ?)",
+          ).bind(
+            crypto.randomUUID(),
+            stored.postId,
+            mention.actorUri,
+            mention.actorUri,
+            mention.handle,
+            new Date().toISOString(),
+          ),
+        );
+      }
+      if (metadata.quoteUri)
+        metadataStatements.push(
+          context.data.DB.prepare(
+            "INSERT OR IGNORE INTO post_quotes (id, post_id, target_post_id, target_uri, snapshot_html, snapshot_title, created_at) VALUES (?, ?, NULL, ?, NULL, NULL, ?)",
+          ).bind(
+            crypto.randomUUID(),
+            stored.postId,
+            metadata.quoteUri,
+            new Date().toISOString(),
+          ),
+        );
+      if (metadata.poll) {
+        metadataStatements.push(
+          context.data.DB.prepare(
+            "INSERT INTO polls (post_id, multiple, closes_at, created_at) VALUES (?, ?, ?, ?)",
+          ).bind(
+            stored.postId,
+            metadata.poll.multiple ? 1 : 0,
+            metadata.poll.closesAt,
+            new Date().toISOString(),
+          ),
+        );
+        metadataStatements.push(
+          ...metadata.poll.options.map((label, position) =>
+            context.data.DB.prepare(
+              "INSERT INTO poll_options (id, poll_post_id, position, label) VALUES (?, ?, ?, ?)",
+            ).bind(crypto.randomUUID(), stored.postId, position, label),
+          ),
+        );
+      }
+      await context.data.DB.batch(metadataStatements);
+    }
     await completeInboxActivity(context.data.DB, activityId);
   } catch (error) {
     if (error instanceof RejectedInboundActivity) {
@@ -952,7 +1174,9 @@ builder
   .on(Create, processInboundCreate)
   .on(Update, processInboundUpdate)
   .on(Delete, processInboundDelete)
-  .on(Like, processInboundLike);
+  .on(Like, processInboundLike)
+  .on(Announce, processInboundAnnounce)
+  .on(EmojiReact, processInboundEmojiReact);
 
 export async function createWorkerFederation(
   environment: FederationEnvironment,

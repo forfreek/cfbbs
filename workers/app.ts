@@ -7,6 +7,7 @@ import { processFederationQueue } from "@/modules/jobs/federation-queue";
 import { enqueuePendingOutboxEvents } from "@/modules/jobs/federation-outbox";
 import { purgeExpiredRemoteObjects } from "@/modules/jobs/remote-retention";
 import { scheduledWork } from "@/modules/jobs/scheduled";
+import { processNotificationPushOutbox } from "@/modules/forum/notifications/push";
 import { purgeExpiredRemoteActorQuarantines } from "@/modules/moderation/remote-quarantine";
 import {
   createMediaStoreFromEnv,
@@ -138,7 +139,17 @@ export default {
       Promise.all(
         scheduledWork(
           controller.cron,
-          () => enqueuePendingOutboxEvents(env.DB, env.FEDERATION_QUEUE),
+          () =>
+            Promise.all([
+              enqueuePendingOutboxEvents(env.DB, env.FEDERATION_QUEUE),
+              processNotificationPushOutbox(
+                env as Env & {
+                  VAPID_PUBLIC_KEY?: string;
+                  VAPID_PRIVATE_JWK?: string;
+                  VAPID_SUBJECT?: string;
+                },
+              ),
+            ]),
           [
             () => purgeExpiredRemoteObjects(env.DB),
             () => purgeExpiredRemoteActorQuarantines(env.DB),

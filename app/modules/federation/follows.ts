@@ -102,6 +102,7 @@ export function acceptedRemoteFollowStatements(
   const targetInboxUrl =
     input.follower.sharedInboxUrl ?? input.follower.inboxUrl;
   const activity = createFollowAcceptActivity(input);
+  const notificationId = crypto.randomUUID();
   return [
     remoteActorUpsertStatement(input.follower, now),
     {
@@ -118,7 +119,7 @@ export function acceptedRemoteFollowStatements(
     {
       sql: "INSERT INTO notifications (id, recipient_user_id, actor_id, type, thread_id, post_id, read_at, created_at) SELECT ?, ?, ?, 'follow', NULL, NULL, NULL, ? WHERE ? != ? AND NOT EXISTS (SELECT 1 FROM notifications WHERE recipient_user_id = ? AND actor_id = ? AND type = 'follow')",
       params: [
-        crypto.randomUUID(),
+        notificationId,
         input.localActorId,
         input.follower.uri,
         now,
@@ -127,6 +128,10 @@ export function acceptedRemoteFollowStatements(
         input.localActorId,
         input.follower.uri,
       ],
+    },
+    {
+      sql: "INSERT OR IGNORE INTO notification_push_outbox (id, notification_id, state, attempts, next_attempt_at, last_error, created_at, sent_at) SELECT ?, ?, 'pending', 0, ?, NULL, ?, NULL WHERE EXISTS (SELECT 1 FROM notifications WHERE id = ?)",
+      params: [crypto.randomUUID(), notificationId, now, now, notificationId],
     },
     {
       sql: "INSERT OR IGNORE INTO federation_outbox_events (id, actor_id, aggregate_type, aggregate_id, activity_type, activity_json, delivery_scope, state, queued_at, created_at, updated_at) VALUES (?, ?, 'follow', ?, 'Accept', ?, 'direct', 'pending', NULL, ?, ?)",

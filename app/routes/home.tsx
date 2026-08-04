@@ -127,6 +127,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               <MessageCircle aria-hidden="true" />
               <span>我的通知</span>
             </Link>
+            <Link className="sidebar-link" to="/bookmarks">
+              <MessageCircle aria-hidden="true" />
+              <span>我的收藏</span>
+            </Link>
             <Link className="sidebar-link" to="/search">
               <Tag aria-hidden="true" />
               <span>搜索主题</span>

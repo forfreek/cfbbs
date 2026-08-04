@@ -44,6 +44,7 @@
     "APP_ORIGIN": "http://127.0.0.1:5173",
     "EMAIL_MODE": "disabled",
     "EMAIL_FROM": "cfbbs-test@lukelzlz.top",
+    "VAPID_SUBJECT": "mailto:cfbbs-test@lukelzlz.top",
     "VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare"
   },
   "env": {
@@ -92,6 +93,8 @@
         "EMAIL_MODE": "http",
         "EMAIL_FROM": "cfbbs-test@lukelzlz.top",
         "EMAIL_GATEWAY_URL": "https://mail.s.lukelzlz.top/email-gateway/",
+        "VAPID_PUBLIC_KEY": "BHUL5gzgiZ9BRBY0kkru3HfH8hSPMOKWw3wyThsPlZQ60HoHPnSxBR81PDS93kWwz-UNOHSiFbmcM-U5XMSFC5s",
+        "VAPID_SUBJECT": "mailto:cfbbs-test@lukelzlz.top",
         "FEDIFY_ALLOW_PRIVATE_ADDRESS": "true",
         "VALUE_FROM_CLOUDFLARE": "Hello from the CFBBS test environment"
       }

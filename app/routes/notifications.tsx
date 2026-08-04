@@ -9,6 +9,7 @@ import { loadForumBoard } from "@/modules/forum/read.server";
 import {
   listNotifications,
   decodeNotificationCursor,
+  markAllNotificationsRead,
   markNotificationRead,
   notificationForViewer,
   type StoredNotification,
@@ -18,6 +19,8 @@ import { getSession } from "@/modules/identity/auth.server";
 function notificationLabel(type: StoredNotification["type"]) {
   if (type === "reply") return "回复了你的主题";
   if (type === "like") return "赞了你的帖子";
+  if (type === "mention") return "提到了你";
+  if (type === "thread-reply") return "更新了你订阅的主题";
   return "关注了你";
 }
 
@@ -31,7 +34,8 @@ async function authorizeNotification(
     notification.boardVisibility === "private" ||
     notification.postVisibility === "private";
   if (!notification.boardId) return !explicitlyPrivate;
-  const cached = cache.get(notification.boardId);
+  const cacheKey = `${notification.boardId}:${explicitlyPrivate ? "private" : "public"}`;
+  const cached = cache.get(cacheKey);
   if (cached) return cached;
   const authorization = (async () => {
     const requiresPrivateAccess =
@@ -41,7 +45,7 @@ async function authorizeNotification(
     const board = await loadForumBoard(database, notification.boardId!);
     return board ? canViewPrivateForumContent(database, board, userId) : false;
   })();
-  cache.set(notification.boardId, authorization);
+  cache.set(cacheKey, authorization);
   return authorization;
 }
 
@@ -52,10 +56,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const cursor = decodeNotificationCursor(cursorValue);
   if (cursorValue !== null && !cursor)
     throw new Response("Invalid cursor", { status: 400 });
+  const unreadOnly =
+    new URL(request.url).searchParams.get("filter") === "unread";
   const result = await listNotifications(
     context.cloudflare.env.DB,
     session.user.id,
     cursor,
+    unreadOnly,
   );
   const accessCache = new Map<string, Promise<boolean>>();
   const notifications = await Promise.all(
@@ -69,13 +76,21 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       return notificationForViewer(notification, authorized);
     }),
   );
-  return { notifications, nextCursor: result.nextCursor ?? null };
+  return {
+    notifications,
+    nextCursor: result.nextCursor ?? null,
+    unreadOnly,
+  };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
   const session = await getSession(request, context.cloudflare.env);
   if (!session) throw redirect("/auth/login");
   const form = await request.formData();
+  if (String(form.get("intent") ?? "") === "mark-all-read") {
+    await markAllNotificationsRead(context.cloudflare.env.DB, session.user.id);
+    return redirect("/notifications");
+  }
   await markNotificationRead(
     context.cloudflare.env.DB,
     String(form.get("notificationId") ?? ""),
@@ -87,13 +102,29 @@ export async function action({ request, context }: Route.ActionArgs) {
 export default function Notifications({ loaderData }: Route.ComponentProps) {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
-      <h1 className="text-3xl font-semibold tracking-tight">通知</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-semibold tracking-tight">通知</h1>
+        <div className="flex gap-3 text-sm">
+          <Link
+            className="text-blue-700 hover:underline"
+            to="/notifications?filter=unread"
+          >
+            只看未读
+          </Link>
+          <Form method="post">
+            <input type="hidden" name="intent" value="mark-all-read" />
+            <button className="text-slate-600 hover:text-slate-950">
+              全部标为已读
+            </button>
+          </Form>
+        </div>
+      </div>
       {loaderData.notifications.length > 0 ? (
         <ol className="mt-8 divide-y border-y">
           {loaderData.notifications.map((notification) => {
             const target =
               notification.preview.boardTitle && notification.threadId
-                ? `/threads/${notification.threadId}`
+                ? `/threads/${notification.threadId}${notification.postId ? `#post-${notification.postId}` : ""}`
                 : null;
             return (
               <li key={notification.id} className="py-4">
@@ -136,7 +167,7 @@ export default function Notifications({ loaderData }: Route.ComponentProps) {
       {loaderData.nextCursor ? (
         <Link
           className="mt-5 inline-block text-sm text-blue-700 hover:underline"
-          to={`/notifications?cursor=${loaderData.nextCursor}`}
+          to={`/notifications?${loaderData.unreadOnly ? "filter=unread&" : ""}cursor=${loaderData.nextCursor}`}
         >
           加载更多通知
         </Link>

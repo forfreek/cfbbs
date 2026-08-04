@@ -50,8 +50,21 @@ export type ForumPost = {
   visibility: "public" | "private";
   likeCount: number;
   viewerLiked: boolean;
+  viewerBookmarked: boolean;
+  parentAuthorHandle: string | null;
+  parentAuthorName: string | null;
+  parentRenderedHtml: string | null;
+  parentPublishedAt: string | null;
   publishedAt: string;
   updatedAt: string;
+  reactions?: {
+    emoji: string;
+    count: number;
+    viewerReacted: boolean;
+    customEmojiUrl: string | null;
+  }[];
+  poll?: import("./p2").PollView | null;
+  quoteUri?: string | null;
 };
 
 export type ForumPostCursor = { publishedAt: string; id: string };
@@ -214,6 +227,7 @@ export async function listForumThreadPosts(
   const params = cursor
     ? [
         viewerActorId,
+        viewerActorId,
         threadId,
         viewerActorId,
         cursor.publishedAt,
@@ -221,10 +235,32 @@ export async function listForumThreadPosts(
         cursor.id,
         51,
       ]
-    : [viewerActorId, threadId, viewerActorId];
+    : [viewerActorId, viewerActorId, threadId, viewerActorId];
   const posts = await database
     .prepare(
-      `SELECT posts.id, posts.thread_id AS threadId, posts.parent_post_id AS parentPostId, posts.author_user_id AS authorUserId, COALESCE(profiles.handle, federation_actors.uri) AS authorHandle, COALESCE(profiles.display_name, federation_actors.name) AS authorName, posts.author_actor_id AS authorActorUri, posts.federation_object_id AS federationObjectId, posts.rendered_html AS renderedHtml, posts.visibility, (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id) AS likeCount, EXISTS(SELECT 1 FROM post_likes WHERE post_likes.post_id = posts.id AND post_likes.actor_id = ?) AS viewerLiked, posts.published_at AS publishedAt, posts.updated_at AS updatedAt FROM posts LEFT JOIN profiles ON profiles.user_id = posts.author_user_id LEFT JOIN federation_actors ON federation_actors.id = posts.author_actor_id WHERE posts.thread_id = ? AND posts.state = 'published' AND (posts.origin = 'local' OR federation_actors.blocked_at IS NULL) AND NOT EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = posts.author_actor_id) ${visibility} ${cursorPredicate} ORDER BY posts.published_at ASC, posts.id ASC LIMIT ${cursor ? "?" : "50"}`,
+      `SELECT posts.id, posts.thread_id AS threadId, posts.parent_post_id AS parentPostId, posts.author_user_id AS authorUserId,
+              COALESCE(profiles.handle, federation_actors.uri) AS authorHandle,
+              COALESCE(profiles.display_name, federation_actors.name) AS authorName,
+              posts.author_actor_id AS authorActorUri, posts.federation_object_id AS federationObjectId,
+              posts.rendered_html AS renderedHtml, posts.visibility,
+              (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id) AS likeCount,
+              EXISTS(SELECT 1 FROM post_likes WHERE post_likes.post_id = posts.id AND post_likes.actor_id = ?) AS viewerLiked,
+              EXISTS(SELECT 1 FROM post_bookmarks WHERE post_bookmarks.post_id = posts.id AND post_bookmarks.user_id = ?) AS viewerBookmarked,
+              parent_profiles.handle AS parentAuthorHandle,
+              parent_profiles.display_name AS parentAuthorName,
+              parent_post.rendered_html AS parentRenderedHtml,
+              parent_post.published_at AS parentPublishedAt,
+              posts.published_at AS publishedAt, posts.updated_at AS updatedAt
+       FROM posts
+       LEFT JOIN profiles ON profiles.user_id = posts.author_user_id
+       LEFT JOIN federation_actors ON federation_actors.id = posts.author_actor_id
+       LEFT JOIN posts AS parent_post ON parent_post.id = posts.parent_post_id AND parent_post.state = 'published' ${includePrivate ? "" : "AND parent_post.visibility = 'public'"}
+       LEFT JOIN profiles AS parent_profiles ON parent_profiles.user_id = parent_post.author_user_id
+       WHERE posts.thread_id = ? AND posts.state = 'published'
+         AND (posts.origin = 'local' OR federation_actors.blocked_at IS NULL)
+         AND NOT EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = posts.author_actor_id)
+         ${visibility} ${cursorPredicate}
+       ORDER BY posts.published_at ASC, posts.id ASC LIMIT ${cursor ? "?" : "50"}`,
     )
     .bind(...params)
     .all<ForumPost>();

@@ -69,6 +69,46 @@
   --shadow-soft: 0 1px 2px rgb(25 35 45 / 5%), 0 8px 24px rgb(25 35 45 / 4%);
 }
 
+:root[data-theme="dark"] {
+  --background: #151515;
+  --foreground: #f5f2ed;
+  --card: #202020;
+  --card-foreground: #f5f2ed;
+  --popover: #202020;
+  --popover-foreground: #f5f2ed;
+  --secondary: #2b2b2b;
+  --secondary-foreground: #e3ddd5;
+  --muted: #292929;
+  --muted-foreground: #aaa49c;
+  --border: #3a3835;
+  --input: #46433f;
+  --sidebar: #1d1d1d;
+  --sidebar-foreground: #e7e2da;
+  --sidebar-border: #3a3835;
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 25%), 0 8px 24px rgb(0 0 0 / 18%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --background: #151515;
+    --foreground: #f5f2ed;
+    --card: #202020;
+    --card-foreground: #f5f2ed;
+    --popover: #202020;
+    --popover-foreground: #f5f2ed;
+    --secondary: #2b2b2b;
+    --secondary-foreground: #e3ddd5;
+    --muted: #292929;
+    --muted-foreground: #aaa49c;
+    --border: #3a3835;
+    --input: #46433f;
+    --sidebar: #1d1d1d;
+    --sidebar-foreground: #e7e2da;
+    --sidebar-border: #3a3835;
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / 25%), 0 8px 24px rgb(0 0 0 / 18%);
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -144,6 +184,21 @@ button {
   border-bottom: 1px solid var(--border);
   background: rgb(255 255 255 / 94%);
   backdrop-filter: blur(14px);
+}
+
+.preference-select {
+  display: inline-flex;
+  align-items: center;
+}
+
+.preference-select select {
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 3px 7px;
+  font-size: 12px;
 }
 
 .app-header__inner {
@@ -243,6 +298,26 @@ button {
 .icon-button svg {
   width: 17px;
   height: 17px;
+}
+
+.app-notification {
+  position: relative;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -5px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #d85d36;
+  color: white;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
 }
 
 .icon-button:hover,

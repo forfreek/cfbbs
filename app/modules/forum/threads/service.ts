@@ -8,6 +8,8 @@ import {
   loadOwnedMediaByIds,
   postAttachmentInsertStatements,
 } from "@/modules/media";
+import { syncPostContentMetadata } from "@/modules/forum/content";
+import { createPoll } from "@/modules/forum/p2";
 
 export type NewThread = {
   threadId: string;
@@ -20,6 +22,11 @@ export type NewThread = {
   visibility: "public" | "private";
   attachmentIds?: readonly string[];
   federation?: FederationPostPublication;
+  poll?: {
+    multiple: boolean;
+    closesAt: string | null;
+    options: readonly string[];
+  };
 };
 
 export async function createThread(database: D1Database, input: NewThread) {
@@ -49,6 +56,8 @@ export async function createThread(database: D1Database, input: NewThread) {
     updatedAt: now,
     parentPostId: null,
     attachmentIds,
+    markdown: input.markdown,
+    poll: input.poll,
     publication: input.federation,
   });
   await database.batch([
@@ -105,4 +114,11 @@ export async function createThread(database: D1Database, input: NewThread) {
       : []),
     ...(outbox ? [outbox] : []),
   ]);
+  await syncPostContentMetadata(database, {
+    postId: input.postId,
+    markdown: input.markdown,
+    createdAt: now,
+  });
+  if (input.poll)
+    await createPoll(database, { postId: input.postId, ...input.poll });
 }

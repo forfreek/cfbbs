@@ -163,6 +163,7 @@ export function remoteLikeStatements(
   input: RemoteLike,
   now: string,
 ): Statement[] {
+  const notificationId = crypto.randomUUID();
   return [
     {
       sql: "INSERT OR IGNORE INTO post_likes (post_id, actor_id, activity_id, created_at) VALUES (?, ?, ?, ?)",
@@ -171,7 +172,7 @@ export function remoteLikeStatements(
     {
       sql: "INSERT INTO notifications (id, recipient_user_id, actor_id, type, thread_id, post_id, read_at, created_at) SELECT ?, ?, ?, 'like', ?, ?, NULL, ? WHERE ? != ? AND EXISTS (SELECT 1 FROM post_likes WHERE post_id = ? AND actor_id = ? AND activity_id = ?) AND NOT EXISTS (SELECT 1 FROM notifications WHERE recipient_user_id = ? AND actor_id = ? AND type = 'like' AND post_id = ?)",
       params: [
-        crypto.randomUUID(),
+        notificationId,
         input.recipientUserId,
         input.actorUri,
         input.threadId,
@@ -186,6 +187,10 @@ export function remoteLikeStatements(
         input.actorUri,
         input.postId,
       ],
+    },
+    {
+      sql: "INSERT OR IGNORE INTO notification_push_outbox (id, notification_id, state, attempts, next_attempt_at, last_error, created_at, sent_at) SELECT ?, ?, 'pending', 0, ?, NULL, ?, NULL WHERE EXISTS (SELECT 1 FROM notifications WHERE id = ?)",
+      params: [crypto.randomUUID(), notificationId, now, now, notificationId],
     },
   ];
 }

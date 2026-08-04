@@ -331,13 +331,236 @@ export const postLikes = sqliteTable(
   ],
 );
 
+export const postBookmarks = sqliteTable(
+  "post_bookmarks",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.postId] }),
+    index("post_bookmarks_user_index").on(table.userId, table.createdAt),
+    index("post_bookmarks_post_index").on(table.postId),
+  ],
+);
+
+export const hashtags = sqliteTable(
+  "hashtags",
+  {
+    id: text("id").primaryKey(),
+    tag: text("tag").notNull(),
+    displayName: text("display_name").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [uniqueIndex("hashtags_tag_unique").on(table.tag)],
+);
+
+export const postHashtags = sqliteTable(
+  "post_hashtags",
+  {
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id),
+    hashtagId: text("hashtag_id")
+      .notNull()
+      .references(() => hashtags.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.postId, table.hashtagId] }),
+    index("post_hashtags_tag_index").on(table.hashtagId, table.postId),
+  ],
+);
+
+export const postMentions = sqliteTable(
+  "post_mentions",
+  {
+    id: text("id").primaryKey(),
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id),
+    mentionedUserId: text("mentioned_user_id").references(() => authUsers.id),
+    actorUri: text("actor_uri"),
+    handle: text("handle").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("post_mentions_post_handle_unique").on(
+      table.postId,
+      table.handle,
+    ),
+    index("post_mentions_user_index").on(
+      table.mentionedUserId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const bookmarkFolders = sqliteTable(
+  "bookmark_folders",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    name: text("name").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("bookmark_folders_user_name_unique").on(
+      table.userId,
+      table.name,
+    ),
+    index("bookmark_folders_user_index").on(table.userId, table.updatedAt),
+  ],
+);
+
+export const bookmarkFolderItems = sqliteTable(
+  "bookmark_folder_items",
+  {
+    folderId: text("folder_id")
+      .notNull()
+      .references(() => bookmarkFolders.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.folderId, table.postId] }),
+    index("bookmark_folder_items_user_index").on(table.userId, table.createdAt),
+  ],
+);
+
+export const polls = sqliteTable("polls", {
+  postId: text("post_id")
+    .primaryKey()
+    .references(() => posts.id),
+  multiple: integer("multiple", { mode: "boolean" }).notNull().default(false),
+  closesAt: text("closes_at"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const pollOptions = sqliteTable(
+  "poll_options",
+  {
+    id: text("id").primaryKey(),
+    pollPostId: text("poll_post_id")
+      .notNull()
+      .references(() => polls.postId),
+    position: integer("position").notNull(),
+    label: text("label").notNull(),
+  },
+  (table) => [
+    uniqueIndex("poll_options_poll_position_unique").on(
+      table.pollPostId,
+      table.position,
+    ),
+  ],
+);
+
+export const pollVotes = sqliteTable(
+  "poll_votes",
+  {
+    pollPostId: text("poll_post_id")
+      .notNull()
+      .references(() => polls.postId),
+    optionId: text("option_id")
+      .notNull()
+      .references(() => pollOptions.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.pollPostId, table.optionId, table.userId] }),
+    index("poll_votes_user_index").on(table.pollPostId, table.userId),
+  ],
+);
+
+export const postReactions = sqliteTable(
+  "post_reactions",
+  {
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id),
+    actorId: text("actor_id").notNull(),
+    emoji: text("emoji").notNull(),
+    activityId: text("activity_id"),
+    customEmojiUrl: text("custom_emoji_url"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.postId, table.actorId, table.emoji] }),
+    uniqueIndex("post_reactions_activity_unique").on(table.activityId),
+    index("post_reactions_post_index").on(table.postId, table.emoji),
+  ],
+);
+
+export const postQuotes = sqliteTable(
+  "post_quotes",
+  {
+    id: text("id").primaryKey(),
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id),
+    targetPostId: text("target_post_id").references(() => posts.id),
+    targetUri: text("target_uri").notNull(),
+    snapshotHtml: text("snapshot_html"),
+    snapshotTitle: text("snapshot_title"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("post_quotes_post_target_unique").on(
+      table.postId,
+      table.targetUri,
+    ),
+    index("post_quotes_target_index").on(table.targetUri),
+  ],
+);
+
+export const postBoosts = sqliteTable(
+  "post_boosts",
+  {
+    id: text("id").primaryKey(),
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id),
+    actorId: text("actor_id").notNull(),
+    targetUri: text("target_uri").notNull(),
+    activityId: text("activity_id"),
+    createdAt: text("created_at").notNull(),
+    revokedAt: text("revoked_at"),
+  },
+  (table) => [
+    uniqueIndex("post_boosts_actor_target_unique").on(
+      table.actorId,
+      table.targetUri,
+    ),
+    uniqueIndex("post_boosts_activity_unique").on(table.activityId),
+    index("post_boosts_post_index").on(table.postId, table.createdAt),
+  ],
+);
+
 export const notifications = sqliteTable(
   "notifications",
   {
     id: text("id").primaryKey(),
     recipientUserId: text("recipient_user_id").notNull(),
     actorId: text("actor_id").notNull(),
-    type: text("type", { enum: ["reply", "follow", "like"] }).notNull(),
+    type: text("type", {
+      enum: ["reply", "follow", "like", "mention", "thread-reply"],
+    }).notNull(),
     threadId: text("thread_id").references(() => threads.id),
     postId: text("post_id").references(() => posts.id),
     readAt: text("read_at"),
@@ -348,6 +571,158 @@ export const notifications = sqliteTable(
       table.recipientUserId,
       table.readAt,
       table.createdAt,
+    ),
+  ],
+);
+
+export const threadSubscriptions = sqliteTable(
+  "thread_subscriptions",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id),
+    mode: text("mode", { enum: ["all", "mentions"] })
+      .notNull()
+      .default("all"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.threadId] }),
+    index("thread_subscriptions_thread_index").on(
+      table.threadId,
+      table.updatedAt,
+    ),
+  ],
+);
+
+export const localFollows = sqliteTable(
+  "local_follows",
+  {
+    followerUserId: text("follower_user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    followingUserId: text("following_user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.followerUserId, table.followingUserId] }),
+    index("local_follows_following_index").on(
+      table.followingUserId,
+      table.createdAt,
+    ),
+    index("local_follows_follower_index").on(
+      table.followerUserId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const userNotificationPreferences = sqliteTable(
+  "user_notification_preferences",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => authUsers.id),
+    pushReplies: integer("push_replies", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    pushMentions: integer("push_mentions", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    pushLikes: integer("push_likes", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    pushFollows: integer("push_follows", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    pushThreadReplies: integer("push_thread_replies", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
+
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.id),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: text("created_at").notNull(),
+    lastUsedAt: text("last_used_at"),
+  },
+  (table) => [
+    uniqueIndex("push_subscriptions_endpoint_unique").on(table.endpoint),
+    index("push_subscriptions_user_index").on(table.userId, table.createdAt),
+  ],
+);
+
+export const notificationPushOutbox = sqliteTable(
+  "notification_push_outbox",
+  {
+    id: text("id").primaryKey(),
+    notificationId: text("notification_id")
+      .notNull()
+      .references(() => notifications.id),
+    state: text("state", { enum: ["pending", "sent", "failed"] })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull(),
+    sentAt: text("sent_at"),
+  },
+  (table) => [
+    uniqueIndex("notification_push_outbox_notification_unique").on(
+      table.notificationId,
+    ),
+    index("notification_push_outbox_retry_index").on(
+      table.state,
+      table.nextAttemptAt,
+    ),
+  ],
+);
+
+export const notificationPushDeliveries = sqliteTable(
+  "notification_push_deliveries",
+  {
+    id: text("id").primaryKey(),
+    notificationId: text("notification_id")
+      .notNull()
+      .references(() => notifications.id),
+    subscriptionId: text("subscription_id")
+      .notNull()
+      .references(() => pushSubscriptions.id),
+    state: text("state", { enum: ["pending", "sent", "failed"] })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull(),
+    sentAt: text("sent_at"),
+  },
+  (table) => [
+    uniqueIndex("notification_push_delivery_pair_unique").on(
+      table.notificationId,
+      table.subscriptionId,
+    ),
+    index("notification_push_delivery_retry_index").on(
+      table.state,
+      table.nextAttemptAt,
     ),
   ],
 );

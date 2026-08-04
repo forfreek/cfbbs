@@ -6,6 +6,7 @@ import {
   loadLocalActorCollectionOwner,
 } from "@/modules/federation/collections";
 import { validateHandle } from "@/modules/identity/handle";
+import { listLocalFollowProfiles } from "@/modules/identity/local-follows";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const handle = validateHandle(params.handle ?? "");
@@ -21,7 +22,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     owner.actorId,
     "following",
   );
-  return { owner, actors: collection.items };
+  const local = await listLocalFollowProfiles(context.cloudflare.env.DB, {
+    userId: owner.actorId,
+    direction: "following",
+  });
+  return { owner, actors: collection.items, localProfiles: local.results };
 }
 
 export default function UserFollowing({ loaderData }: Route.ComponentProps) {
@@ -34,8 +39,15 @@ export default function UserFollowing({ loaderData }: Route.ComponentProps) {
         </Link>
         正在关注
       </p>
-      {actors.length > 0 ? (
+      {loaderData.localProfiles.length > 0 || actors.length > 0 ? (
         <ul className="mt-8 space-y-3">
+          {loaderData.localProfiles.map((profile) => (
+            <li key={profile.userId}>
+              <Link className="hover:underline" to={`/users/${profile.handle}`}>
+                {profile.displayName} @{profile.handle}
+              </Link>
+            </li>
+          ))}
           {actors.map((actor) => (
             <li key={actor}>
               <a className="text-blue-700 hover:underline" href={actor}>

@@ -1,4 +1,5 @@
 import { Form, Link, data, redirect, useActionData } from "react-router";
+import { useState } from "react";
 
 import type { Route } from "./+types/threads.$threadId";
 import { MarkdownEditor } from "@/components/markdown-editor";
@@ -24,12 +25,17 @@ import {
   validateAttachmentIds,
 } from "@/modules/media";
 import { getSession } from "@/modules/identity/auth.server";
+import { loadThreadSubscription } from "@/modules/forum/subscriptions";
+import { MediaGallery } from "@/components/media-gallery";
+import { draftStorageKey } from "@/components/draft-storage";
 import { authorizeDatabase } from "@/modules/permissions/authorization.server";
 import {
   consumeRateLimit,
   rateLimitResponse,
   rateLimitRules,
 } from "@/modules/rate-limit.server";
+import { validatePollInput } from "@/modules/forum/content";
+import { listReactionSummary, loadPollView } from "@/modules/forum/p2";
 
 async function threadPageData(request: Request, env: Env, threadId: string) {
   const thread = await loadForumThread(env.DB, threadId);
@@ -53,6 +59,7 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
     deleteAny,
     canPin,
     canLock,
+    subscription,
   ] = await Promise.all([
     canViewForumBoard(env.DB, board, userId),
     canViewPrivateForumContent(env.DB, board, userId),
@@ -78,6 +85,9 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
       permission: "threads.lock",
       boardId: board.id,
     }),
+    userId
+      ? loadThreadSubscription(env.DB, userId, thread.id)
+      : Promise.resolve(null),
   ]);
   if (
     !canViewBoard ||
@@ -103,25 +113,39 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
     env.DB,
     remoteObjectUris,
   );
-  const postsWithAttachments = posts.results.map((post) => {
-    const local = (attachmentMap.get(post.id) ?? []).map((item) => ({
-      id: item.id,
-      url: mediaObjectPublicUrl(env.APP_ORIGIN, item.id),
-      contentType: item.contentType,
-      originalFilename: item.originalFilename,
-      kind: item.kind as "image" | "document",
-      byteSize: item.byteSize,
-    }));
-    const remote = post.federationObjectId
-      ? remoteAttachmentsToView(
-          remoteAttachmentMap.get(post.federationObjectId) ?? [],
+  const postsWithAttachments = await Promise.all(
+    posts.results.map(async (post) => {
+      const local = (attachmentMap.get(post.id) ?? []).map((item) => ({
+        id: item.id,
+        url: mediaObjectPublicUrl(env.APP_ORIGIN, item.id),
+        contentType: item.contentType,
+        originalFilename: item.originalFilename,
+        kind: item.kind as "image" | "document",
+        byteSize: item.byteSize,
+      }));
+      const remote = post.federationObjectId
+        ? remoteAttachmentsToView(
+            remoteAttachmentMap.get(post.federationObjectId) ?? [],
+          )
+        : [];
+      const [poll, reactions, quote] = await Promise.all([
+        loadPollView(env.DB, post.id, userId),
+        listReactionSummary(env.DB, post.id, userId),
+        env.DB.prepare(
+          "SELECT target_uri AS targetUri FROM post_quotes WHERE post_id = ? LIMIT 1",
         )
-      : [];
-    return {
-      ...post,
-      attachments: [...local, ...remote],
-    };
-  });
+          .bind(post.id)
+          .first<{ targetUri: string }>(),
+      ]);
+      return {
+        ...post,
+        attachments: [...local, ...remote],
+        poll,
+        reactions,
+        quoteUri: quote?.targetUri ?? null,
+      };
+    }),
+  );
   return {
     board,
     thread,
@@ -133,6 +157,7 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
     canDeleteAny: deleteAny.allowed,
     canPin: canPin.allowed,
     canLock: canLock.allowed,
+    subscription,
   };
 }
 
@@ -188,7 +213,39 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   if (!attachments.ok) {
     return data({ error: attachments.message }, { status: 400 });
   }
+  const rawPollOptions = form
+    .getAll("pollOptions")
+    .map(String)
+    .filter((value) => value.trim());
+  const poll = rawPollOptions.length
+    ? validatePollInput({
+        options: rawPollOptions,
+        multiple: form.get("pollMultiple") === "true",
+        closesAt: String(form.get("pollClosesAt") || "") || null,
+      })
+    : null;
+  if (poll && !poll.ok) return data({ error: poll.message }, { status: 400 });
 
+  const rawReplyTo = String(form.get("replyTo") ?? "");
+  const replyTo = rawReplyTo || thread.firstPostId;
+  const parent = await context.cloudflare.env.DB.prepare(
+    "SELECT id, thread_id AS threadId, state, visibility FROM posts WHERE id = ? LIMIT 1",
+  )
+    .bind(replyTo)
+    .first<{
+      id: string;
+      threadId: string;
+      state: string;
+      visibility: string;
+    }>();
+  if (
+    !parent ||
+    parent.threadId !== thread.id ||
+    parent.state !== "published" ||
+    (parent.visibility === "private" && !canViewPrivate)
+  ) {
+    return data({ error: "回复目标不可用。" }, { status: 400 });
+  }
   const visibility =
     boardIsPrivate || thread.firstPostVisibility === "private"
       ? "private"
@@ -197,11 +254,12 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     postId: crypto.randomUUID(),
     revisionId: crypto.randomUUID(),
     threadId: thread.id,
-    parentPostId: thread.firstPostId,
+    parentPostId: replyTo,
     authorUserId: session.user.id,
     markdown: input.value.markdown,
     attachmentIds: attachments.ids,
     visibility,
+    ...(poll?.ok ? { poll: poll.value } : {}),
     ...(visibility === "public"
       ? {
           federation: {
@@ -227,7 +285,9 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
     canDeleteAny,
     canPin,
     canLock,
+    subscription,
   } = loaderData;
+  const [replyTo, setReplyTo] = useState<string>(thread.firstPostId);
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <p className="text-sm text-slate-500">
@@ -246,6 +306,32 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
       ) : null}
       {thread.isPinned ? (
         <p className="mt-2 text-sm text-blue-700">本主题已置顶。</p>
+      ) : null}
+      {session ? (
+        <Form
+          method="post"
+          action={`/threads/${thread.id}/subscription`}
+          className="mt-4 flex flex-wrap items-center gap-2 text-sm"
+        >
+          <select
+            name="mode"
+            defaultValue={subscription?.mode ?? "none"}
+            className="rounded-md border px-2 py-1"
+          >
+            <option value="none">不订阅</option>
+            <option value="all">订阅全部回复</option>
+            <option value="mentions">仅被提及时</option>
+          </select>
+          <button className="rounded-md border px-3 py-1.5 hover:bg-slate-50">
+            保存订阅
+          </button>
+          <Link
+            className="text-slate-500 hover:underline"
+            to="/settings/notifications"
+          >
+            管理通知设置
+          </Link>
+        </Form>
       ) : null}
       {session && (canPin || canLock) ? (
         <div className="mt-4 flex flex-wrap gap-3 text-sm">
@@ -306,25 +392,85 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
               className="prose prose-slate mt-4 max-w-none"
               dangerouslySetInnerHTML={{ __html: post.renderedHtml }}
             />
-            {post.attachments && post.attachments.length > 0 ? (
-              <ul className="mt-4 space-y-1 text-sm text-slate-600">
-                {post.attachments.map((attachment) => (
-                  <li key={attachment.id}>
-                    <a
-                      className="text-blue-700 hover:underline"
-                      href={attachment.url}
-                      rel="nofollow ugc noopener"
+            <MediaGallery attachments={post.attachments ?? []} />
+            {post.quoteUri ? (
+              <a
+                className="mt-4 block rounded-md border bg-slate-50 p-3 text-sm text-blue-700 hover:underline"
+                href={post.quoteUri}
+                rel="nofollow noopener"
+                target="_blank"
+              >
+                引用：{post.quoteUri}
+              </a>
+            ) : null}
+            {post.poll ? (
+              <Form
+                method="post"
+                action={`/posts/${post.id}/poll/vote`}
+                className="mt-4 rounded-md border p-4"
+              >
+                <p className="text-sm font-medium">
+                  投票
+                  {post.poll.closesAt
+                    ? ` · 截止 ${post.poll.closesAt.slice(0, 16).replace("T", " ")}`
+                    : ""}
+                </p>
+                <div className="mt-3 grid gap-2">
+                  {post.poll.options.map((option) => (
+                    <label
+                      key={option.id}
+                      className="flex items-center gap-2 text-sm"
                     >
-                      {attachment.originalFilename}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+                      <input
+                        type={post.poll?.multiple ? "checkbox" : "radio"}
+                        name="optionIds"
+                        value={option.id}
+                        disabled={!session || post.poll?.hasVoted}
+                      />
+                      <span>{option.label}</span>
+                      {post.poll?.hasVoted ? (
+                        <span className="text-slate-500">({option.votes})</span>
+                      ) : null}
+                    </label>
+                  ))}
+                </div>
+                {session && !post.poll.hasVoted ? (
+                  <button className="mt-3 rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50">
+                    投票
+                  </button>
+                ) : null}
+                {!session ? (
+                  <p className="mt-3 text-xs text-slate-500">登录后参与投票</p>
+                ) : null}
+              </Form>
             ) : null}
             {post.parentPostId ? (
               <p className="mt-4 text-xs text-slate-500">
-                回复 #{post.parentPostId}
+                回复{" "}
+                <a
+                  className="text-blue-700 hover:underline"
+                  href={`/threads/${thread.id}#post-${post.parentPostId}`}
+                >
+                  #{post.parentPostId.slice(0, 8)}
+                </a>
               </p>
+            ) : null}
+            {post.parentPostId && post.parentRenderedHtml ? (
+              <a
+                href={`#post-${post.parentPostId}`}
+                className="mt-3 block rounded-md border-l-2 border-slate-300 bg-slate-50 p-3 text-sm text-slate-600"
+              >
+                <span className="font-medium">
+                  {post.parentAuthorName ?? post.parentAuthorHandle ?? "父回复"}
+                </span>
+                <span
+                  className="ml-2 line-clamp-2"
+                  dangerouslySetInnerHTML={{ __html: post.parentRenderedHtml }}
+                />
+              </a>
+            ) : null}
+            {post.parentPostId && !post.parentRenderedHtml ? (
+              <p className="mt-3 text-xs text-slate-500">父回复不可见</p>
             ) : null}
             {session ? (
               <div className="mt-4 flex items-start gap-4">
@@ -333,6 +479,76 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
                     {post.viewerLiked ? "取消点赞" : "点赞"}（{post.likeCount}）
                   </button>
                 </Form>
+                <Form method="post" action={`/posts/${post.id}/bookmark`}>
+                  <input
+                    type="hidden"
+                    name="bookmarked"
+                    value={String(!post.viewerBookmarked)}
+                  />
+                  <button className="text-sm text-slate-600 hover:text-blue-700">
+                    {post.viewerBookmarked ? "取消收藏" : "收藏"}
+                  </button>
+                </Form>
+                <div className="flex flex-wrap gap-1">
+                  {(post.reactions ?? []).map((reaction) => (
+                    <Form
+                      key={reaction.emoji}
+                      method="post"
+                      action={`/posts/${post.id}/react`}
+                    >
+                      <input
+                        type="hidden"
+                        name="emoji"
+                        value={reaction.emoji}
+                      />
+                      <button
+                        className={`rounded-full border px-2 py-0.5 text-xs ${reaction.viewerReacted ? "bg-orange-50" : ""}`}
+                        title="切换反应"
+                      >
+                        {reaction.emoji} {reaction.count}
+                      </button>
+                    </Form>
+                  ))}
+                  <Form method="post" action={`/posts/${post.id}/react`}>
+                    <input type="hidden" name="emoji" value="👍" />
+                    <button
+                      className="rounded-full border px-2 py-0.5 text-xs"
+                      title="添加赞"
+                    >
+                      👍
+                    </button>
+                  </Form>
+                </div>
+                <Form method="post" action={`/posts/${post.id}/boost`}>
+                  <button className="text-sm text-slate-600 hover:text-blue-700">
+                    Boost
+                  </button>
+                </Form>
+                <Form method="post" action={`/posts/${post.id}/quote`}>
+                  <input
+                    type="hidden"
+                    name="targetUri"
+                    value={post.federationObjectId ?? ""}
+                  />
+                  <button
+                    disabled={!post.federationObjectId}
+                    className="text-sm text-slate-600 hover:text-blue-700"
+                  >
+                    引用
+                  </button>
+                </Form>
+                <button
+                  type="button"
+                  className="text-sm text-slate-600 hover:text-blue-700"
+                  onClick={() => {
+                    setReplyTo(post.id);
+                    document
+                      .getElementById("reply-composer")
+                      ?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                >
+                  回复
+                </button>
                 {post.authorUserId !== null &&
                 (post.authorUserId === session.user.id || canEditAny) ? (
                   <Link
@@ -400,8 +616,25 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
               {actionData.error}
             </p>
           ) : null}
-          <Form method="post" className="mt-4 grid gap-4">
-            <MarkdownEditor label="内容（Markdown）" rows={7} />
+          <Form method="post" id="reply-composer" className="mt-4 grid gap-4">
+            <input type="hidden" name="replyTo" value={replyTo} />
+            {replyTo !== thread.firstPostId ? (
+              <p className="text-sm text-slate-500">
+                正在回复 #{replyTo.slice(0, 8)}{" "}
+                <button
+                  type="button"
+                  className="ml-2 underline"
+                  onClick={() => setReplyTo(thread.firstPostId)}
+                >
+                  取消指定
+                </button>
+              </p>
+            ) : null}
+            <MarkdownEditor
+              label="内容（Markdown）"
+              rows={7}
+              draftKey={draftStorageKey(session?.user.id, `reply:${thread.id}`)}
+            />
             <button className="w-fit rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
               发表回复
             </button>

@@ -283,7 +283,7 @@ describe("Fedify inbox gateway", () => {
     );
 
     expect(batches).toHaveLength(1);
-    expect(batches[0]).toHaveLength(5);
+    expect(batches[0]).toHaveLength(6);
     expect(
       statements.some(
         (statement) =>
@@ -618,7 +618,7 @@ describe("Fedify inbox gateway", () => {
     await processInboundLike(inboxContext(database), activity);
 
     expect(batches).toHaveLength(1);
-    expect(batches[0]).toHaveLength(2);
+    expect(batches[0]).toHaveLength(3);
     expect(
       statements.some((statement) =>
         statement.sql.includes("INSERT OR IGNORE INTO post_likes"),

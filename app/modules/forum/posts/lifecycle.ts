@@ -5,6 +5,7 @@ import {
   type FederationPostPublication,
 } from "@/modules/federation/outbox";
 import { softDeletePostMediaLinks } from "@/modules/media";
+import { syncPostContentMetadata } from "@/modules/forum/content";
 
 export type MutableForumPost = {
   id: string;
@@ -18,6 +19,7 @@ export type MutableForumPost = {
   markdown: string;
   federationObjectId: string | null;
   publishedAt: string;
+  updatedAt: string;
   parentPostId: string | null;
   threadTitle: string;
 };
@@ -28,7 +30,7 @@ export async function loadMutableForumPost(
 ) {
   return database
     .prepare(
-      "SELECT posts.id, posts.thread_id AS threadId, threads.board_id AS boardId, threads.first_post_id AS firstPostId, threads.title AS threadTitle, posts.author_user_id AS authorUserId, posts.origin, posts.state, posts.visibility, posts.markdown, posts.federation_object_id AS federationObjectId, posts.published_at AS publishedAt, posts.parent_post_id AS parentPostId FROM posts INNER JOIN threads ON threads.id = posts.thread_id WHERE posts.id = ? LIMIT 1",
+      "SELECT posts.id, posts.thread_id AS threadId, threads.board_id AS boardId, threads.first_post_id AS firstPostId, threads.title AS threadTitle, posts.author_user_id AS authorUserId, posts.origin, posts.state, posts.visibility, posts.markdown, posts.federation_object_id AS federationObjectId, posts.published_at AS publishedAt, posts.updated_at AS updatedAt, posts.parent_post_id AS parentPostId FROM posts INNER JOIN threads ON threads.id = posts.thread_id WHERE posts.id = ? LIMIT 1",
     )
     .bind(postId)
     .first<MutableForumPost>();
@@ -69,6 +71,7 @@ export async function editLocalPost(
     updatedAt: now,
     parentPostId: input.parentPostId,
     attachmentIds: input.attachmentIds,
+    markdown: input.markdown,
     publication: input.federation,
   });
   await database.batch([
@@ -112,6 +115,11 @@ export async function editLocalPost(
       : []),
     ...outbox,
   ]);
+  await syncPostContentMetadata(database, {
+    postId: input.postId,
+    markdown: input.markdown,
+    createdAt: now,
+  });
 }
 
 export type LocalPostDeletion = {

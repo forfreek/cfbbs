@@ -1,7 +1,9 @@
 import { data, Form, redirect, useActionData } from "react-router";
+import { useState } from "react";
 
 import type { Route } from "./+types/posts.$postId.edit";
 import { MarkdownEditor } from "@/components/markdown-editor";
+import { draftStorageKey } from "@/components/draft-storage";
 import {
   canViewForumBoard,
   canViewPrivateForumContent,
@@ -136,7 +138,8 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
 export default function EditPost({ loaderData }: Route.ComponentProps) {
   const actionData = useActionData<typeof action>();
-  const { post, isFirstPost, attachments } = loaderData;
+  const { post, isFirstPost, attachments, session } = loaderData;
+  const [title, setTitle] = useState(post.threadTitle);
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="text-3xl font-semibold tracking-tight">
@@ -154,7 +157,8 @@ export default function EditPost({ loaderData }: Route.ComponentProps) {
             <input
               required
               name="title"
-              defaultValue={post.threadTitle}
+              value={title}
+              onChange={(event) => setTitle(event.currentTarget.value)}
               maxLength={200}
               className="rounded-md border px-3 py-2 font-normal"
             />
@@ -164,6 +168,10 @@ export default function EditPost({ loaderData }: Route.ComponentProps) {
           defaultValue={post.markdown}
           initialAttachments={attachments}
           rows={12}
+          draftKey={draftStorageKey(session.user.id, `edit:${post.id}`)}
+          draftTitle={title}
+          onDraftTitleChange={setTitle}
+          serverUpdatedAt={post.updatedAt}
         />
         <div className="flex gap-4">
           <button className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">

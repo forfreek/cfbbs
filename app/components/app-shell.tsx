@@ -2,8 +2,14 @@ import Bell from "lucide-react/dist/esm/icons/bell.mjs";
 import Menu from "lucide-react/dist/esm/icons/menu.mjs";
 import PenLine from "lucide-react/dist/esm/icons/pen-line.mjs";
 import Search from "lucide-react/dist/esm/icons/search.mjs";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, Link, useLocation } from "react-router";
+import {
+  getMessage,
+  type Locale,
+  type Theme,
+  messages,
+} from "@/modules/i18n/messages";
 
 type Session = {
   user: {
@@ -15,12 +21,31 @@ type Session = {
 export function AppShell({
   children,
   session,
+  unreadNotifications = 0,
+  initialLocale = "zh-CN",
+  initialTheme = "system",
 }: {
   children: React.ReactNode;
   session: Session;
+  unreadNotifications?: number;
+  initialLocale?: Locale;
+  initialTheme?: Theme;
 }) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [locale, setLocale] = useState<Locale>(initialLocale);
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+  useEffect(() => {
+    localStorage.setItem("cfbbs.locale", locale);
+    document.cookie = `cfbbs.locale=${encodeURIComponent(locale)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.documentElement.lang = locale;
+  }, [locale]);
+  useEffect(() => {
+    localStorage.setItem("cfbbs.theme", theme);
+    document.cookie = `cfbbs.theme=${theme}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+  const t = (key: keyof (typeof messages)["zh-CN"]) => getMessage(locale, key);
   const handle = session?.user.username ?? session?.user.name ?? "我的账号";
   const isActive = (href: string) =>
     href === "/"
@@ -47,21 +72,21 @@ export function AppShell({
               aria-current={isActive("/") ? "page" : undefined}
               to="/"
             >
-              首页
+              {t("home")}
             </Link>
             <Link
               className="app-nav__link"
               aria-current={isActive("/following") ? "page" : undefined}
               to="/following"
             >
-              关注
+              {t("following")}
             </Link>
             <Link
               className="app-nav__link"
               aria-current={isActive("/search") ? "page" : undefined}
               to="/search"
             >
-              搜索
+              {t("search")}
             </Link>
           </nav>
 
@@ -83,9 +108,17 @@ export function AppShell({
                 <Link
                   className="icon-button app-notification"
                   to="/notifications"
-                  aria-label="通知"
+                  aria-label={t("notifications")}
                 >
                   <Bell aria-hidden="true" />
+                  {unreadNotifications > 0 ? (
+                    <span
+                      className="notification-badge"
+                      aria-label={`${unreadNotifications} 条未读通知`}
+                    >
+                      {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                    </span>
+                  ) : null}
                 </Link>
                 <Link className="user-menu" to={`/users/${handle}`}>
                   <span className="avatar avatar--small" aria-hidden="true">
@@ -95,6 +128,9 @@ export function AppShell({
                 </Link>
                 <Link className="text-button" to="/settings/security">
                   安全
+                </Link>
+                <Link className="text-button" to="/settings/notifications">
+                  {t("notifications")}
                 </Link>
                 <Form method="post" action="/auth/logout">
                   <button className="text-button" type="submit">
@@ -116,6 +152,33 @@ export function AppShell({
                 </Link>
               </>
             )}
+            <label className="preference-select">
+              <span className="sr-only">{t("language")}</span>
+              <select
+                aria-label={t("language")}
+                value={locale}
+                onChange={(event) =>
+                  setLocale(event.currentTarget.value as Locale)
+                }
+              >
+                <option value="zh-CN">中</option>
+                <option value="en-US">EN</option>
+              </select>
+            </label>
+            <label className="preference-select">
+              <span className="sr-only">{t("theme")}</span>
+              <select
+                aria-label={t("theme")}
+                value={theme}
+                onChange={(event) =>
+                  setTheme(event.currentTarget.value as Theme)
+                }
+              >
+                <option value="system">{t("system")}</option>
+                <option value="light">{t("light")}</option>
+                <option value="dark">{t("dark")}</option>
+              </select>
+            </label>
           </div>
         </div>
       </header>
@@ -126,24 +189,24 @@ export function AppShell({
             onClick={() => setMobileOpen(false)}
             to="/"
           >
-            首页
+            {t("home")}
           </Link>
           <Link
             aria-current={isActive("/following") ? "page" : undefined}
             onClick={() => setMobileOpen(false)}
             to="/following"
           >
-            关注
+            {t("following")}
           </Link>
           <Link
             aria-current={isActive("/search") ? "page" : undefined}
             onClick={() => setMobileOpen(false)}
             to="/search"
           >
-            搜索
+            {t("search")}
           </Link>
           <Link onClick={() => setMobileOpen(false)} to="/notifications">
-            通知
+            {t("notifications")}
           </Link>
         </nav>
       ) : null}

@@ -7,6 +7,7 @@ import {
   mediaRecordsToNoteAttachments,
   type MediaObjectRecord,
 } from "@/modules/media";
+import { extractContentTokens } from "@/modules/forum/mentions";
 
 export type FederationPostPublication = {
   eventId: string;
@@ -25,6 +26,12 @@ type PostOutboxInput = {
   updatedAt: string;
   parentPostId: string | null;
   attachmentIds?: readonly string[];
+  markdown?: string;
+  poll?: {
+    multiple: boolean;
+    closesAt: string | null;
+    options: readonly string[];
+  };
   publication?: FederationPostPublication;
 };
 
@@ -103,6 +110,61 @@ export function createNoteDeleteActivity(
   };
 }
 
+export function createAnnounceActivity(input: {
+  origin: string;
+  actorHandle: string;
+  activityId: string;
+  objectUri: string;
+}) {
+  return {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id: new URL(`/activities/announce/${input.activityId}`, input.origin).href,
+    type: "Announce",
+    actor: new URL(`/users/${input.actorHandle}`, input.origin).href,
+    object: input.objectUri,
+    to: ["https://www.w3.org/ns/activitystreams#Public"],
+  };
+}
+
+export function createUndoAnnounceActivity(input: {
+  origin: string;
+  actorHandle: string;
+  activityId: string;
+  objectUri: string;
+}) {
+  const announce = createAnnounceActivity(input);
+  return {
+    "@context": announce["@context"],
+    id: new URL(`/activities/undo-announce/${input.activityId}`, input.origin)
+      .href,
+    type: "Undo",
+    actor: announce.actor,
+    object: announce,
+    to: announce.to,
+  };
+}
+
+export function createEmojiReactActivity(input: {
+  origin: string;
+  actorHandle: string;
+  activityId: string;
+  objectUri: string;
+  emoji: string;
+}) {
+  return {
+    "@context": [
+      "https://www.w3.org/ns/activitystreams",
+      "https://w3id.org/fep/c0e0",
+    ],
+    id: new URL(`/activities/react/${input.activityId}`, input.origin).href,
+    type: "EmojiReact",
+    actor: new URL(`/users/${input.actorHandle}`, input.origin).href,
+    object: input.objectUri,
+    name: input.emoji,
+    to: ["https://www.w3.org/ns/activitystreams#Public"],
+  };
+}
+
 async function resolveNoteMedia(
   database: D1Database,
   input: {
@@ -133,6 +195,12 @@ async function publicPostWithAttachments(
   options: {
     authorUserId: string;
     attachmentIds?: readonly string[];
+    markdown?: string;
+    poll?: {
+      multiple: boolean;
+      closesAt: string | null;
+      options: readonly string[];
+    };
   },
 ) {
   const media = await resolveNoteMedia(database, {
@@ -140,9 +208,86 @@ async function publicPostWithAttachments(
     authorUserId: options.authorUserId,
     attachmentIds: options.attachmentIds,
   });
+  const metadataProbe = database
+    .prepare("SELECT id FROM hashtags LIMIT 1")
+    .bind();
+  if (typeof metadataProbe.all !== "function") {
+    return {
+      ...post,
+      attachments: mediaRecordsToNoteAttachments(origin, media),
+    };
+  }
+  const [tags, mentions, quote, storedPoll] = await Promise.all([
+    database
+      .prepare(
+        "SELECT hashtags.tag, hashtags.display_name AS displayName FROM post_hashtags INNER JOIN hashtags ON hashtags.id = post_hashtags.hashtag_id WHERE post_hashtags.post_id = ? ORDER BY hashtags.tag",
+      )
+      .bind(post.id)
+      .all<{ tag: string; displayName: string }>(),
+    database
+      .prepare(
+        "SELECT federation_actors.uri AS href, '@' || post_mentions.handle AS name FROM post_mentions INNER JOIN user ON user.id = post_mentions.mentioned_user_id INNER JOIN federation_actors ON federation_actors.id = user.id WHERE post_mentions.post_id = ?",
+      )
+      .bind(post.id)
+      .all<{ href: string; name: string }>(),
+    database
+      .prepare(
+        "SELECT target_uri AS uri, snapshot_html AS html, snapshot_title AS title FROM post_quotes WHERE post_id = ? LIMIT 1",
+      )
+      .bind(post.id)
+      .first<{ uri: string; html: string | null; title: string | null }>(),
+    database
+      .prepare(
+        "SELECT polls.multiple, polls.closes_at AS closesAt, poll_options.label AS name, COUNT(poll_votes.user_id) AS votesCount FROM polls INNER JOIN poll_options ON poll_options.poll_post_id = polls.post_id LEFT JOIN poll_votes ON poll_votes.option_id = poll_options.id WHERE polls.post_id = ? GROUP BY poll_options.id ORDER BY poll_options.position",
+      )
+      .bind(post.id)
+      .all<{
+        multiple: number;
+        closesAt: string | null;
+        name: string;
+        votesCount: number;
+      }>(),
+  ]);
+  const derived = options.markdown
+    ? extractContentTokens(options.markdown)
+    : null;
+  const mentionRows =
+    derived && derived.mentions.length > 0
+      ? await database
+          .prepare(
+            `SELECT federation_actors.uri AS href, '@' || profiles.handle AS name FROM profiles INNER JOIN federation_actors ON federation_actors.id = profiles.user_id WHERE profiles.handle IN (${derived.mentions.map(() => "?").join(",")}) AND federation_actors.is_local = 1`,
+          )
+          .bind(...derived.mentions)
+          .all<{ href: string; name: string }>()
+      : null;
   return {
     ...post,
     attachments: mediaRecordsToNoteAttachments(origin, media),
+    hashtags: derived?.hashtags ?? tags.results,
+    mentions: mentionRows?.results ?? mentions.results,
+    quote: quote
+      ? {
+          uri: quote.uri,
+          html: quote.html ?? undefined,
+          title: quote.title ?? undefined,
+        }
+      : null,
+    poll: options.poll
+      ? {
+          multiple: options.poll.multiple,
+          closesAt: options.poll.closesAt,
+          options: options.poll.options.map((name) => ({ name })),
+        }
+      : storedPoll.results.length
+        ? {
+            multiple: Boolean(storedPoll.results[0].multiple),
+            closesAt: storedPoll.results[0].closesAt,
+            options: storedPoll.results.map(({ name, votesCount }) => ({
+              name,
+              votesCount: Number(votesCount),
+            })),
+          }
+        : null,
   };
 }
 
@@ -222,6 +367,8 @@ export async function publicPostOutboxStatement(
       {
         authorUserId: input.authorUserId,
         attachmentIds: input.attachmentIds,
+        markdown: input.markdown,
+        poll: input.poll,
       },
     ),
   );
@@ -279,6 +426,8 @@ export async function publicPostUpdateOutboxStatements(
       {
         authorUserId: input.authorUserId,
         attachmentIds: input.attachmentIds,
+        markdown: input.markdown,
+        poll: input.poll,
       },
     ),
   );

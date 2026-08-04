@@ -1,4 +1,5 @@
 import { Form, Link, data, redirect, useActionData } from "react-router";
+import { useState } from "react";
 
 import type { Route } from "./+types/boards.$boardId";
 import { MarkdownEditor } from "@/components/markdown-editor";
@@ -15,6 +16,7 @@ import {
   loadForumBoard,
 } from "@/modules/forum/read.server";
 import { createThread } from "@/modules/forum/threads/service";
+import { validatePollInput } from "@/modules/forum/content";
 import { getSession } from "@/modules/identity/auth.server";
 import { validateAttachmentIds } from "@/modules/media";
 import {
@@ -22,6 +24,7 @@ import {
   rateLimitResponse,
   rateLimitRules,
 } from "@/modules/rate-limit.server";
+import { draftStorageKey } from "@/components/draft-storage";
 
 async function boardPageData(request: Request, env: Env, boardId: string) {
   const cursorValue = new URL(request.url).searchParams.get("cursor");
@@ -101,6 +104,18 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const attachments = validateAttachmentIds(form.getAll("attachmentIds"));
   if (!attachments.ok)
     return data({ error: attachments.message }, { status: 400 });
+  const rawPollOptions = form
+    .getAll("pollOptions")
+    .map(String)
+    .filter((value) => value.trim());
+  const poll = rawPollOptions.length
+    ? validatePollInput({
+        options: rawPollOptions,
+        multiple: form.get("pollMultiple") === "true",
+        closesAt: String(form.get("pollClosesAt") || "") || null,
+      })
+    : null;
+  if (poll && !poll.ok) return data({ error: poll.message }, { status: 400 });
 
   const threadId = crypto.randomUUID();
   await createThread(context.cloudflare.env.DB, {
@@ -113,6 +128,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     markdown: input.value.markdown,
     attachmentIds: attachments.ids,
     visibility: boardIsPrivate ? "private" : "public",
+    ...(poll?.ok ? { poll: poll.value } : {}),
     ...(!boardIsPrivate
       ? {
           federation: {
@@ -129,6 +145,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 export default function BoardPage({ loaderData }: Route.ComponentProps) {
   const actionData = useActionData<typeof action>();
   const { board, session, canCreate, threads } = loaderData;
+  const [title, setTitle] = useState("");
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
       <p className="text-sm text-slate-500">板块</p>
@@ -154,10 +171,19 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
                 required
                 name="title"
                 maxLength={200}
+                value={title}
+                onChange={(event) => setTitle(event.currentTarget.value)}
                 className="rounded-md border px-3 py-2 font-normal"
               />
             </label>
-            <MarkdownEditor />
+            <MarkdownEditor
+              draftKey={draftStorageKey(
+                session?.user.id,
+                `new-thread:${board.id}`,
+              )}
+              draftTitle={title}
+              onDraftTitleChange={setTitle}
+            />
             <button className="w-fit rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
               发布主题
             </button>

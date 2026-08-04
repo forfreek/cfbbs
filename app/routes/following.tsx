@@ -1,13 +1,16 @@
 import { Form, Link, redirect } from "react-router";
+import { MediaGallery } from "@/components/media-gallery";
 
 import type { Route } from "./+types/following";
 import {
-  decodeRemoteNoteCursor,
-  listFollowedRemoteNotes,
-} from "@/modules/federation/remote-note";
+  decodeFollowingCursor,
+  listFollowingFeed,
+} from "@/modules/forum/following";
 import { getSession } from "@/modules/identity/auth.server";
 import {
+  loadPostAttachments,
   loadRemoteObjectAttachments,
+  mediaObjectPublicUrl,
   remoteAttachmentsToView,
 } from "@/modules/media";
 
@@ -15,22 +18,47 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const session = await getSession(request, context.cloudflare.env);
   if (!session) throw redirect("/auth/login");
   const cursorValue = new URL(request.url).searchParams.get("cursor");
-  const cursor = decodeRemoteNoteCursor(cursorValue);
+  const cursor = decodeFollowingCursor(cursorValue);
   if (cursorValue !== null && !cursor)
     throw new Response("Invalid cursor", { status: 400 });
-  const notes = await listFollowedRemoteNotes(
+  const notes = await listFollowingFeed(
     context.cloudflare.env.DB,
     session.user.id,
     cursor,
   );
-  const attachmentMap = await loadRemoteObjectAttachments(
+  const remoteAttachmentMap = await loadRemoteObjectAttachments(
     context.cloudflare.env.DB,
-    notes.results.map((note) => note.uri),
+    notes.results
+      .filter((note) => note.source === "remote")
+      .map((note) => note.objectUri),
+  );
+  const localAttachmentMap = await loadPostAttachments(
+    context.cloudflare.env.DB,
+    notes.results
+      .filter((note) => note.source === "local")
+      .map((note) => note.postId as string),
   );
   return {
     notes: notes.results.map((note) => ({
       ...note,
-      attachments: remoteAttachmentsToView(attachmentMap.get(note.uri) ?? []),
+      attachments:
+        note.source === "remote"
+          ? remoteAttachmentsToView(
+              remoteAttachmentMap.get(note.objectUri) ?? [],
+            )
+          : (localAttachmentMap.get(note.postId ?? "") ?? []).map(
+              (attachment) => ({
+                id: attachment.id,
+                url: mediaObjectPublicUrl(
+                  context.cloudflare.env.APP_ORIGIN,
+                  attachment.id,
+                ),
+                contentType: attachment.contentType,
+                originalFilename: attachment.originalFilename,
+                kind: attachment.kind,
+                byteSize: attachment.byteSize,
+              }),
+            ),
     })),
     nextCursor: notes.nextCursor ?? null,
   };
@@ -61,14 +89,26 @@ export default function Following({ loaderData }: Route.ComponentProps) {
       {loaderData.notes.length > 0 ? (
         <ol className="mt-8 space-y-5">
           {loaderData.notes.map((note) => (
-            <li key={note.uri} className="rounded-lg border p-5">
+            <li
+              key={`${note.source}:${note.itemId}`}
+              className="rounded-lg border p-5"
+            >
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
-                <a
-                  className="hover:text-blue-700 hover:underline"
-                  href={note.actorUri}
-                >
-                  {note.actorName || note.actorUri}
-                </a>
+                {note.actorUri ? (
+                  <a
+                    className="hover:text-blue-700 hover:underline"
+                    href={note.actorUri}
+                  >
+                    {note.actorName || note.actorUri}
+                  </a>
+                ) : (
+                  <Link
+                    className="hover:text-blue-700 hover:underline"
+                    to={`/users/${note.actorHandle}`}
+                  >
+                    {note.actorName || note.actorHandle}
+                  </Link>
+                )}
                 <time dateTime={note.publishedAt}>
                   {note.publishedAt.slice(0, 16).replace("T", " ")}
                 </time>
@@ -77,35 +117,28 @@ export default function Following({ loaderData }: Route.ComponentProps) {
                 className="prose prose-slate mt-4 max-w-none"
                 dangerouslySetInnerHTML={{ __html: note.contentHtml }}
               />
-              {note.attachments.length > 0 ? (
-                <ul className="mt-4 space-y-1 text-sm">
-                  {note.attachments.map((attachment) => (
-                    <li key={attachment.id}>
-                      <a
-                        className="text-blue-700 hover:underline"
-                        href={attachment.url}
-                        rel="nofollow ugc noopener"
-                      >
-                        {attachment.originalFilename}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+              <MediaGallery attachments={note.attachments} />
               <a
                 className="mt-4 inline-block text-xs text-slate-500 hover:text-blue-700 hover:underline"
-                href={note.uri}
+                href={
+                  note.source === "remote"
+                    ? note.objectUri
+                    : `/threads/${note.threadId}#post-${note.postId}`
+                }
               >
                 查看原文
               </a>
               <Form method="post" action="/settings/actor-preferences">
                 <input type="hidden" name="intent" value="set" />
                 <input type="hidden" name="actorId" value={note.actorId} />
-                <label className="sr-only" htmlFor={`preference-${note.uri}`}>
+                <label
+                  className="sr-only"
+                  htmlFor={`preference-${note.objectUri}`}
+                >
                   管理账号
                 </label>
                 <select
-                  id={`preference-${note.uri}`}
+                  id={`preference-${note.objectUri}`}
                   name="state"
                   defaultValue="muted"
                   className="ml-4 rounded-md border px-2 py-1 text-xs"
