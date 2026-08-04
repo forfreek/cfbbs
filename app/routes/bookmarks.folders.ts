@@ -32,6 +32,34 @@ export async function action({ request, context }: Route.ActionArgs) {
       });
       return { ok: true };
     }
+    if (String(form.get("intent")) === "rename") {
+      const name = String(form.get("name") ?? "").trim();
+      if (!name || name.length > 80)
+        throw new Error("文件夹名称需要 1 到 80 个字符。");
+      await context.cloudflare.env.DB.prepare(
+        "UPDATE bookmark_folders SET name = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+      )
+        .bind(
+          name,
+          new Date().toISOString(),
+          String(form.get("folderId")),
+          session.user.id,
+        )
+        .run();
+      return { ok: true };
+    }
+    if (String(form.get("intent")) === "delete") {
+      const folderId = String(form.get("folderId"));
+      await context.cloudflare.env.DB.batch([
+        context.cloudflare.env.DB.prepare(
+          "DELETE FROM bookmark_folder_items WHERE folder_id = ? AND user_id = ?",
+        ).bind(folderId, session.user.id),
+        context.cloudflare.env.DB.prepare(
+          "DELETE FROM bookmark_folders WHERE id = ? AND user_id = ?",
+        ).bind(folderId, session.user.id),
+      ]);
+      return { ok: true };
+    }
     return {
       folder: await createBookmarkFolder(
         context.cloudflare.env.DB,

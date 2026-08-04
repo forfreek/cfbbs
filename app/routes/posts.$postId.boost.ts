@@ -11,17 +11,19 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const session = await getSession(request, context.cloudflare.env);
   if (!session) throw redirect("/auth/login");
   const post = await context.cloudflare.env.DB.prepare(
-    "SELECT thread_id AS threadId, federation_object_id AS objectUri, visibility FROM posts WHERE id = ? AND state = 'published'",
+    "SELECT posts.thread_id AS threadId, federation_object_id AS objectUri, posts.visibility, boards.visibility AS boardVisibility FROM posts INNER JOIN threads ON threads.id = posts.thread_id INNER JOIN boards ON boards.id = threads.board_id WHERE posts.id = ? AND posts.state = 'published'",
   )
     .bind(params.postId ?? "")
     .first<{
       threadId: string;
       objectUri: string | null;
       visibility: string;
+      boardVisibility: "public" | "private";
     }>();
   if (
     !post ||
     post.visibility !== "public" ||
+    post.boardVisibility !== "public" ||
     !post.objectUri ||
     !isSafeQuoteUri(post.objectUri)
   )

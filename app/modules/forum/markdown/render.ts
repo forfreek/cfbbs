@@ -25,6 +25,9 @@ const allowedTags = [
   "img",
 ];
 
+const inlineMentionPattern = /(^|[\s([{"'])@([a-z0-9_]{3,32})\b/gi;
+const inlineHashtagPattern = /(^|[\s([{"'])#([\p{L}\p{N}_-]{1,64})/gu;
+
 function isSafeImageSrc(value: string) {
   try {
     if (value.startsWith("/media/")) {
@@ -73,6 +76,13 @@ export function renderMarkdown(markdown: string) {
     transformTags: {
       a: sanitizeHtml.simpleTransform("a", { rel: "nofollow ugc noopener" }),
       img: transformImageTag,
+    },
+    textFilter: (text, tagName) => {
+      if (tagName === "a" || tagName === "code" || tagName === "pre")
+        return text;
+      return text
+        .replace(inlineMentionPattern, '$1<a href="/users/$2">@$2</a>')
+        .replace(inlineHashtagPattern, '$1<a href="/tags/$2">#$2</a>');
     },
   });
 }

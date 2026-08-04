@@ -94,13 +94,24 @@ export async function listPostBookmarks(
   database: D1Database,
   userId: string,
   cursor: BookmarkCursor | null = null,
+  folderId: string | null = null,
 ) {
+  const folderPredicate = folderId
+    ? "AND EXISTS (SELECT 1 FROM bookmark_folder_items WHERE bookmark_folder_items.folder_id = ? AND bookmark_folder_items.post_id = post_bookmarks.post_id AND bookmark_folder_items.user_id = ?)"
+    : "";
   const predicate = cursor
     ? "AND (post_bookmarks.created_at < ? OR (post_bookmarks.created_at = ? AND post_bookmarks.post_id < ?))"
     : "";
   const params = cursor
-    ? [userId, cursor.createdAt, cursor.createdAt, cursor.postId, 51]
-    : [userId, 51];
+    ? [
+        userId,
+        ...(folderId ? [folderId, userId] : []),
+        cursor.createdAt,
+        cursor.createdAt,
+        cursor.postId,
+        51,
+      ]
+    : [userId, ...(folderId ? [folderId, userId] : []), 51];
   const rows = await database
     .prepare(
       `SELECT post_bookmarks.post_id AS postId,
@@ -121,6 +132,7 @@ export async function listPostBookmarks(
        LEFT JOIN profiles ON profiles.user_id = posts.author_user_id
        WHERE post_bookmarks.user_id = ?
          AND posts.state = 'published'
+         ${folderPredicate}
          ${predicate}
        ORDER BY post_bookmarks.created_at DESC, post_bookmarks.post_id DESC
        LIMIT ?`,

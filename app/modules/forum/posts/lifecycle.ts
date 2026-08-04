@@ -6,6 +6,7 @@ import {
 } from "@/modules/federation/outbox";
 import { softDeletePostMediaLinks } from "@/modules/media";
 import { syncPostContentMetadata } from "@/modules/forum/content";
+import { createPoll } from "@/modules/forum/p2";
 
 export type MutableForumPost = {
   id: string;
@@ -49,6 +50,11 @@ export type LocalPostEdit = {
   revisionId: string;
   attachmentIds?: readonly string[];
   federation?: FederationPostPublication;
+  poll?: {
+    multiple: boolean;
+    closesAt: string | null;
+    options: readonly string[];
+  };
 };
 
 export async function editLocalPost(
@@ -120,6 +126,20 @@ export async function editLocalPost(
     markdown: input.markdown,
     createdAt: now,
   });
+  if (input.poll) {
+    await database.batch([
+      database
+        .prepare("DELETE FROM poll_votes WHERE poll_post_id = ?")
+        .bind(input.postId),
+      database
+        .prepare("DELETE FROM poll_options WHERE poll_post_id = ?")
+        .bind(input.postId),
+      database
+        .prepare("DELETE FROM polls WHERE post_id = ?")
+        .bind(input.postId),
+    ]);
+    await createPoll(database, { postId: input.postId, ...input.poll });
+  }
 }
 
 export type LocalPostDeletion = {

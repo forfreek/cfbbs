@@ -28,6 +28,7 @@ import {
   rateLimitResponse,
   rateLimitRules,
 } from "@/modules/rate-limit.server";
+import { validatePollInput } from "@/modules/forum/content";
 
 async function editablePostData(request: Request, env: Env, postId: string) {
   const session = await getSession(request, env);
@@ -94,6 +95,18 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     attachmentIds: attachments.ids,
   });
   if (!linked.ok) return data({ error: linked.message }, { status: 400 });
+  const rawPollOptions = form
+    .getAll("pollOptions")
+    .map(String)
+    .filter((value) => value.trim());
+  const poll = rawPollOptions.length
+    ? validatePollInput({
+        options: rawPollOptions,
+        multiple: form.get("pollMultiple") === "true",
+        closesAt: String(form.get("pollClosesAt") || "") || null,
+      })
+    : null;
+  if (poll && !poll.ok) return data({ error: poll.message }, { status: 400 });
   let markdown: string;
   let title: string | undefined;
   if (isFirstPost) {
@@ -123,6 +136,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     parentPostId: post.parentPostId,
     revisionId: crypto.randomUUID(),
     attachmentIds: attachments.ids,
+    ...(poll?.ok ? { poll: poll.value } : {}),
     ...(post.visibility === "public"
       ? {
           federation: {

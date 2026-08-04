@@ -635,6 +635,33 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
               rows={7}
               draftKey={draftStorageKey(session?.user.id, `reply:${thread.id}`)}
             />
+            <details className="rounded-md border p-3 text-sm">
+              <summary className="cursor-pointer font-medium">添加投票</summary>
+              <div className="mt-3 grid gap-2">
+                <input
+                  name="pollOptions"
+                  placeholder="选项 1"
+                  className="rounded-md border px-2 py-1.5"
+                />
+                <input
+                  name="pollOptions"
+                  placeholder="选项 2"
+                  className="rounded-md border px-2 py-1.5"
+                />
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" name="pollMultiple" value="true" />
+                  允许多选
+                </label>
+                <label className="grid gap-1">
+                  截止时间
+                  <input
+                    type="datetime-local"
+                    name="pollClosesAt"
+                    className="rounded-md border px-2 py-1.5"
+                  />
+                </label>
+              </div>
+            </details>
             <button className="w-fit rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
               发表回复
             </button>

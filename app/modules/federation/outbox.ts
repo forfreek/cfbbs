@@ -165,6 +165,25 @@ export function createEmojiReactActivity(input: {
   };
 }
 
+export function createUndoEmojiReactActivity(input: {
+  origin: string;
+  actorHandle: string;
+  activityId: string;
+  objectUri: string;
+  emoji: string;
+}) {
+  const reaction = createEmojiReactActivity(input);
+  return {
+    "@context": reaction["@context"],
+    id: new URL(`/activities/undo-react/${input.activityId}`, input.origin)
+      .href,
+    type: "Undo",
+    actor: reaction.actor,
+    object: reaction,
+    to: reaction.to,
+  };
+}
+
 async function resolveNoteMedia(
   database: D1Database,
   input: {
