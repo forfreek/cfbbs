@@ -15,8 +15,8 @@ function markdownTextTokens(markdown: string) {
         continue;
       }
       if (token.type === "link") {
-        // Keep visible link text, but never scan the destination URL.
-        output.push(token.text);
+        // Skip the full link token. This prevents URL fragments and linked
+        // labels from becoming structured mentions/tags accidentally.
         continue;
       }
       if (token.type === "image") continue;
