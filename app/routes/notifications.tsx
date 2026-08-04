@@ -8,6 +8,7 @@ import {
 import { loadForumBoard } from "@/modules/forum/read.server";
 import {
   listNotifications,
+  decodeNotificationCursor,
   markNotificationRead,
   notificationForViewer,
   type StoredNotification,
@@ -47,9 +48,14 @@ async function authorizeNotification(
 export async function loader({ request, context }: Route.LoaderArgs) {
   const session = await getSession(request, context.cloudflare.env);
   if (!session) throw redirect("/auth/login");
+  const cursorValue = new URL(request.url).searchParams.get("cursor");
+  const cursor = decodeNotificationCursor(cursorValue);
+  if (cursorValue !== null && !cursor)
+    throw new Response("Invalid cursor", { status: 400 });
   const result = await listNotifications(
     context.cloudflare.env.DB,
     session.user.id,
+    cursor,
   );
   const accessCache = new Map<string, Promise<boolean>>();
   const notifications = await Promise.all(
@@ -63,7 +69,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       return notificationForViewer(notification, authorized);
     }),
   );
-  return { notifications };
+  return { notifications, nextCursor: result.nextCursor ?? null };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -127,6 +133,14 @@ export default function Notifications({ loaderData }: Route.ComponentProps) {
       ) : (
         <p className="mt-8 text-sm text-slate-500">暂无通知。</p>
       )}
+      {loaderData.nextCursor ? (
+        <Link
+          className="mt-5 inline-block text-sm text-blue-700 hover:underline"
+          to={`/notifications?cursor=${loaderData.nextCursor}`}
+        >
+          加载更多通知
+        </Link>
+      ) : null}
     </main>
   );
 }

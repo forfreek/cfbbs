@@ -12,8 +12,17 @@ import {
   resolveRemoteActorForFollow,
   type ResolvedRemoteActor,
 } from "@/modules/federation/remote-lookup";
-import { searchLocalPosts } from "@/modules/forum/search/service";
+import {
+  decodeSearchCursor,
+  searchLocalPostsPage,
+} from "@/modules/forum/search/service";
 import { getSession } from "@/modules/identity/auth.server";
+import {
+  consumeRateLimit,
+  rateLimitResponse,
+  rateLimitRules,
+  requestIp,
+} from "@/modules/rate-limit.server";
 
 type ActiveOutboundFollow = {
   followActivityId: string;
@@ -33,7 +42,17 @@ async function loadActiveOutboundFollow(
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
+  const limited = await consumeRateLimit(context.cloudflare.env.FEDIFY_KV, {
+    scope: "search",
+    subject: requestIp(request),
+    rule: rateLimitRules.search,
+  });
+  if (!limited.allowed) throw rateLimitResponse(limited.retryAfter);
   const query = new URL(request.url).searchParams.get("q") ?? "";
+  const cursorValue = new URL(request.url).searchParams.get("cursor");
+  const cursor = decodeSearchCursor(cursorValue);
+  if (cursorValue !== null && !cursor)
+    throw new Response("Invalid cursor", { status: 400 });
   const session = await getSession(request, context.cloudflare.env);
   const remoteTarget = parseRemoteLookupTarget(query);
   if (remoteTarget) {
@@ -51,6 +70,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       return {
         query,
         results: [],
+        nextCursor: null,
         remoteLookup,
         remoteLookupError: null,
         session,
@@ -60,6 +80,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       return {
         query,
         results: [],
+        nextCursor: null,
         remoteLookup: null,
         remoteLookupError: "无法获取这个远端 ActivityPub 资源。",
         session,
@@ -67,10 +88,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       };
     }
   }
-  const results = await searchLocalPosts(context.cloudflare.env.DB, query);
+  const page = await searchLocalPostsPage(
+    context.cloudflare.env.DB,
+    query,
+    cursor,
+  );
   return {
     query,
-    results,
+    results: page.results,
+    nextCursor: page.nextCursor,
     remoteLookup: null,
     remoteLookupError: null,
     session,
@@ -269,6 +295,14 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
         <p className="mt-8 text-sm text-slate-500">
           输入关键词以查找公开的本地讨论。
         </p>
+      ) : null}
+      {loaderData.nextCursor ? (
+        <Link
+          className="mt-5 inline-block text-sm text-blue-700 hover:underline"
+          to={`/search?q=${encodeURIComponent(loaderData.query)}&cursor=${loaderData.nextCursor}`}
+        >
+          加载更多搜索结果
+        </Link>
       ) : null}
     </main>
   );

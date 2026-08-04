@@ -42,6 +42,8 @@
   "upload_source_maps": true,
   "vars": {
     "APP_ORIGIN": "http://127.0.0.1:5173",
+    "EMAIL_MODE": "disabled",
+    "EMAIL_FROM": "cfbbs-test@lukelzlz.top",
     "VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare"
   },
   "env": {
@@ -87,6 +89,9 @@
       ],
       "vars": {
         "APP_ORIGIN": "https://cfbbs-test.s.lukelzlz.top",
+        "EMAIL_MODE": "http",
+        "EMAIL_FROM": "cfbbs-test@lukelzlz.top",
+        "EMAIL_GATEWAY_URL": "https://mail.s.lukelzlz.top/email-gateway/",
         "FEDIFY_ALLOW_PRIVATE_ADDRESS": "true",
         "VALUE_FROM_CLOUDFLARE": "Hello from the CFBBS test environment"
       }

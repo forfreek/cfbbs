@@ -1,4 +1,9 @@
 import { getSession } from "@/modules/identity/auth.server";
+import {
+  consumeRateLimit,
+  rateLimitResponse,
+  rateLimitRules,
+} from "@/modules/rate-limit.server";
 
 import { authorizeMediaRead } from "./access";
 import { createMediaStoreFromEnv } from "./s3";
@@ -21,6 +26,12 @@ export async function handleMediaUpload(request: Request, env: Env) {
   if (!session) {
     return json({ ok: false, message: "请先登录。" }, 401);
   }
+  const limited = await consumeRateLimit(env.FEDIFY_KV, {
+    scope: "upload",
+    subject: session.user.id,
+    rule: rateLimitRules.upload,
+  });
+  if (!limited.allowed) return rateLimitResponse(limited.retryAfter);
   const store = createMediaStoreFromEnv(env);
   if (!store) {
     return json(

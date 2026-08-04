@@ -1,6 +1,10 @@
 APP_ORIGIN=http://127.0.0.1:5173
 BETTER_AUTH_SECRET=replace-with-a-random-local-secret
 FEDERATION_KEY_ENCRYPTION_SECRET=replace-with-a-random-local-secret
+EMAIL_MODE=disabled
+EMAIL_FROM=cfbbs-test@lukelzlz.top
+# EMAIL_GATEWAY_URL=https://mail-gateway.example/email-gateway/
+# EMAIL_GATEWAY_TOKEN=replace-with-a-long-random-token
 
 # Optional S3-compatible object storage for media attachments
 S3_ENDPOINT=https://s3.example.test

@@ -1,4 +1,4 @@
-import { Form, data, redirect, useActionData } from "react-router";
+import { Form, data, Link, redirect, useActionData } from "react-router";
 import { eq } from "drizzle-orm";
 
 import type { Route } from "./+types/settings.profile";
@@ -42,6 +42,12 @@ export default function SettingsProfile({ loaderData }: Route.ComponentProps) {
   return (
     <main className="mx-auto max-w-xl px-6 py-16">
       <h1 className="text-2xl font-semibold">编辑个人资料</h1>
+      <Link
+        className="mt-2 inline-block text-sm underline"
+        to="/settings/security"
+      >
+        账户安全
+      </Link>
       <p className="text-muted-foreground mt-2 text-sm">
         联邦用户名 @{profile.handle} 创建后不可修改。
       </p>

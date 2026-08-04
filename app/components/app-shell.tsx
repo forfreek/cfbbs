@@ -93,6 +93,9 @@ export function AppShell({
                   </span>
                   <span className="user-menu__name">{handle}</span>
                 </Link>
+                <Link className="text-button" to="/settings/security">
+                  安全
+                </Link>
                 <Form method="post" action="/auth/logout">
                   <button className="text-button" type="submit">
                     退出

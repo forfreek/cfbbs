@@ -1,0 +1,22 @@
+[Unit]
+Description=CFBBS outbound transactional email gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cfbbs-mail
+Group=cfbbs-mail
+WorkingDirectory=/opt/cfbbs-email-gateway
+ExecStart=/usr/bin/python3 /opt/cfbbs-email-gateway/app.py
+EnvironmentFile=/etc/cfbbs/email-gateway.env
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cfbbs-email-gateway
+
+[Install]
+WantedBy=multi-user.target

@@ -10,6 +10,7 @@ describe("database schema contract", () => {
         "authSessions",
         "authAccounts",
         "authVerifications",
+        "emailDeliveries",
         "profiles",
         "boards",
         "boardClosure",

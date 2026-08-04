@@ -10,6 +10,7 @@ import {
 } from "@/modules/forum/access.server";
 import { validateReplyInput } from "@/modules/forum/input";
 import {
+  decodeForumPostCursor,
   listForumThreadPosts,
   loadForumBoard,
   loadForumThread,
@@ -24,6 +25,11 @@ import {
 } from "@/modules/media";
 import { getSession } from "@/modules/identity/auth.server";
 import { authorizeDatabase } from "@/modules/permissions/authorization.server";
+import {
+  consumeRateLimit,
+  rateLimitResponse,
+  rateLimitRules,
+} from "@/modules/rate-limit.server";
 
 async function threadPageData(request: Request, env: Env, threadId: string) {
   const thread = await loadForumThread(env.DB, threadId);
@@ -33,6 +39,11 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
 
   const session = await getSession(request, env);
   const userId = session?.user.id ?? null;
+  const cursorValue = new URL(request.url).searchParams.get("cursor");
+  const cursor = decodeForumPostCursor(cursorValue);
+  if (cursorValue !== null && !cursor) {
+    throw new Response("Invalid cursor", { status: 400 });
+  }
   const [
     canViewBoard,
     canViewPrivate,
@@ -79,6 +90,7 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
     thread.id,
     boardIsPrivate || canViewPrivate,
     userId,
+    cursor,
   );
   const attachmentMap = await loadPostAttachments(
     env.DB,
@@ -114,6 +126,7 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
     board,
     thread,
     posts: postsWithAttachments,
+    nextCursor: posts.nextCursor ?? null,
     session,
     canReply,
     canEditAny: editAny.allowed,
@@ -159,6 +172,12 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   if (!canReply || thread.isLocked) {
     throw new Response("Forbidden", { status: 403 });
   }
+  const limited = await consumeRateLimit(context.cloudflare.env.FEDIFY_KV, {
+    scope: "write",
+    subject: session.user.id,
+    rule: rateLimitRules.write,
+  });
+  if (!limited.allowed) return rateLimitResponse(limited.retryAfter);
 
   const form = await request.formData();
   const input = validateReplyInput({
@@ -364,6 +383,14 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
           </li>
         ))}
       </ol>
+      {loaderData.nextCursor ? (
+        <Link
+          className="mt-5 inline-block text-sm text-blue-700 hover:underline"
+          to={`/threads/${thread.id}?cursor=${loaderData.nextCursor}`}
+        >
+          加载更多回复
+        </Link>
+      ) : null}
 
       {canReply && !thread.isLocked ? (
         <section className="mt-8 rounded-lg border p-5">

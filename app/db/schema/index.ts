@@ -20,12 +20,39 @@ export const authUsers = sqliteTable(
     image: text("image"),
     username: text("username"),
     displayUsername: text("display_username"),
+    status: text("status", {
+      enum: ["active", "suspended", "banned", "deleted"],
+    })
+      .notNull()
+      .default("active"),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
     uniqueIndex("auth_users_email_unique").on(table.email),
     uniqueIndex("auth_users_username_unique").on(table.username),
+    index("auth_users_status_index").on(table.status),
+  ],
+);
+
+export const emailDeliveries = sqliteTable(
+  "email_deliveries",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => authUsers.id),
+    kind: text("kind").notNull(),
+    recipientHash: text("recipient_hash").notNull(),
+    requestId: text("request_id").notNull(),
+    status: text("status", { enum: ["pending", "sent", "failed"] })
+      .notNull()
+      .default("pending"),
+    error: text("error"),
+    createdAt: text("created_at").notNull(),
+    sentAt: text("sent_at"),
+  },
+  (table) => [
+    uniqueIndex("email_deliveries_request_unique").on(table.requestId),
+    index("email_deliveries_user_index").on(table.userId, table.createdAt),
   ],
 );
 

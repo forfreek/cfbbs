@@ -28,6 +28,38 @@ export type FollowedRemoteNote = {
   updatedAt: string | null;
 };
 
+export type RemoteNoteCursor = { publishedAt: string; uri: string };
+
+export function encodeRemoteNoteCursor(cursor: RemoteNoteCursor) {
+  return btoa(JSON.stringify(cursor))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+}
+
+export function decodeRemoteNoteCursor(value: string | null) {
+  if (!value || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  try {
+    const padded = value.replaceAll("-", "+").replaceAll("_", "/");
+    const parsed: unknown = JSON.parse(
+      atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "=")),
+    );
+    if (!parsed || typeof parsed !== "object") return null;
+    const cursor = parsed as Record<string, unknown>;
+    if (
+      typeof cursor.publishedAt !== "string" ||
+      typeof cursor.uri !== "string"
+    )
+      return null;
+    return {
+      publishedAt: cursor.publishedAt,
+      uri: cursor.uri,
+    } satisfies RemoteNoteCursor;
+  } catch {
+    return null;
+  }
+}
+
 export type RemoteThreadReply = RemoteNote & {
   postId: string;
   threadId: string;
@@ -226,7 +258,11 @@ export async function deleteRemoteNote(
   return results.at(-1)?.meta.changes === 1;
 }
 
-const followedRemoteNotesQuery = `
+function followedRemoteNotesQueryFor(cursor: RemoteNoteCursor | null) {
+  const cursorClause = cursor
+    ? "AND (federation_objects.published_at < ? OR (federation_objects.published_at = ? AND federation_objects.uri < ?))"
+    : "";
+  return `
   SELECT
     federation_objects.uri,
     federation_actors.id AS actorId,
@@ -252,28 +288,53 @@ const followedRemoteNotesQuery = `
       WHERE user_actor_preferences.user_id = ?
         AND user_actor_preferences.actor_id = federation_actors.id
     )
+  ${cursorClause}
   ORDER BY federation_objects.published_at DESC, federation_objects.uri DESC
-  LIMIT 50
+  LIMIT ${cursor ? "?" : "50"}
 `;
+}
+
+const followedRemoteNotesQuery = followedRemoteNotesQueryFor(null);
 
 export async function listFollowedRemoteNotes(
   database: D1Database,
   localActorId: string,
+  cursor: RemoteNoteCursor | null = null,
 ) {
   const notes = await database
-    .prepare(followedRemoteNotesQuery)
-    .bind(localActorId, localActorId)
+    .prepare(followedRemoteNotesQueryFor(cursor))
+    .bind(
+      ...(cursor
+        ? [
+            localActorId,
+            localActorId,
+            cursor.publishedAt,
+            cursor.publishedAt,
+            cursor.uri,
+            51,
+          ]
+        : [localActorId, localActorId]),
+    )
     .all<FollowedRemoteNote>();
+  const results = notes.results.slice(0, 50);
   const blockedDomains = await blockedInstanceDomainsForRemoteUris(
     database,
-    notes.results.map((note) => note.actorUri),
+    results.map((note) => note.actorUri),
   );
   return {
     ...notes,
-    results: notes.results.filter((note) => {
+    results: results.filter((note) => {
       const domain = remoteInstanceDomain(note.actorUri);
       return domain === null || !blockedDomains.has(domain);
     }),
+    ...(notes.results.length > 50 && results.at(-1)
+      ? {
+          nextCursor: encodeRemoteNoteCursor({
+            publishedAt: results.at(-1)!.publishedAt,
+            uri: results.at(-1)!.uri,
+          }),
+        }
+      : {}),
   };
 }
 

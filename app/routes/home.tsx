@@ -13,6 +13,7 @@ import { Link } from "react-router";
 import type { Route } from "./+types/home";
 import {
   boardGroups,
+  decodeHomeCursor,
   loadPublicHome,
   parseHomeSort,
   type HomeBoard,
@@ -60,6 +61,10 @@ export function meta() {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const requestUrl = new URL(request.url);
   const sort = parseHomeSort(requestUrl.searchParams.get("sort"));
+  const cursorValue = requestUrl.searchParams.get("cursor");
+  const cursor = decodeHomeCursor(cursorValue, sort);
+  if (cursorValue !== null && !cursor)
+    throw new Response("Invalid cursor", { status: 400 });
   let userSession = null;
   try {
     userSession = await getSession(request, context.cloudflare.env);
@@ -71,7 +76,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       throw error;
     }
   }
-  const home = await loadPublicHome(context.cloudflare.env.DB, sort);
+  const home = await loadPublicHome(context.cloudflare.env.DB, sort, cursor);
   return { ...home, session: userSession, sort };
 }
 
@@ -213,8 +218,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </p>
             ) : null}
           </div>
-          {loaderData.topics.length >= 50 ? (
-            <p className="list-note">显示最近 50 个主题。</p>
+          {loaderData.nextCursor ? (
+            <Link
+              className="list-note"
+              to={`/?sort=${loaderData.sort}&cursor=${loaderData.nextCursor}`}
+            >
+              加载更多主题
+            </Link>
           ) : null}
         </section>
 

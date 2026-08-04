@@ -30,9 +30,15 @@ export async function action({ request, context }: Route.ActionArgs) {
       { error: payload.message ?? "注册失败，请稍后重试。" },
       { status: response.status },
     );
-  return redirect(`/users/${payload.user.username}`, {
-    headers: { "set-cookie": response.headers.get("set-cookie") ?? "" },
-  });
+  const setCookie = response.headers.get("set-cookie") ?? "";
+  return redirect(
+    setCookie
+      ? `/users/${payload.user.username}`
+      : `/auth/verify?email=${encodeURIComponent(String(form.get("email") ?? ""))}`,
+    {
+      headers: setCookie ? { "set-cookie": setCookie } : undefined,
+    },
+  );
 }
 
 export default function Register() {

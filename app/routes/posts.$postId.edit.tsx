@@ -21,6 +21,11 @@ import {
   validateAttachmentIds,
 } from "@/modules/media";
 import { authorizeDatabase } from "@/modules/permissions/authorization.server";
+import {
+  consumeRateLimit,
+  rateLimitResponse,
+  rateLimitRules,
+} from "@/modules/rate-limit.server";
 
 async function editablePostData(request: Request, env: Env, postId: string) {
   const session = await getSession(request, env);
@@ -71,6 +76,12 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     context.cloudflare.env,
     params.postId ?? "",
   );
+  const limited = await consumeRateLimit(context.cloudflare.env.FEDIFY_KV, {
+    scope: "write",
+    subject: post.authorUserId ?? "unknown",
+    rule: rateLimitRules.write,
+  });
+  if (!limited.allowed) return rateLimitResponse(limited.retryAfter);
   const form = await request.formData();
   const attachments = validateAttachmentIds(form.getAll("attachmentIds"));
   if (!attachments.ok)

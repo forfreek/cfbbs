@@ -11,12 +11,25 @@ import {
   authVerifications,
 } from "@/db/schema";
 import { createLocalActor } from "@/modules/federation/local-actor";
+import { sendTransactionalEmail } from "@/modules/email/service";
+import {
+  consumeRateLimit,
+  rateLimitResponse,
+  rateLimitRules,
+  requestIp,
+} from "@/modules/rate-limit.server";
 
+import { loadAccountStatus } from "./account.server";
 import { normalizeHandle, validateHandle } from "./handle";
 
 export type AuthEnvironment = Pick<Env, "DB" | "APP_ORIGIN"> & {
   BETTER_AUTH_SECRET?: string;
   FEDERATION_KEY_ENCRYPTION_SECRET?: string;
+  EMAIL_MODE?: string;
+  EMAIL_GATEWAY_URL?: string;
+  EMAIL_GATEWAY_TOKEN?: string;
+  EMAIL_FROM?: string;
+  FEDIFY_KV?: KVNamespace;
 };
 
 export function getAuthSettings(environment: AuthEnvironment) {
@@ -37,6 +50,7 @@ export function getAuthSettings(environment: AuthEnvironment) {
 export function createAuth(environment: AuthEnvironment) {
   const settings = getAuthSettings(environment);
   const database = createDatabase(environment.DB);
+  const emailEnabled = environment.EMAIL_MODE?.trim().toLowerCase() === "http";
 
   return betterAuth({
     baseURL: settings.origin,
@@ -60,9 +74,54 @@ export function createAuth(environment: AuthEnvironment) {
         verification: authVerifications,
       },
     }),
+    user: {
+      additionalFields: {
+        status: {
+          type: "string",
+          required: false,
+          defaultValue: "active",
+          input: false,
+        },
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: emailEnabled,
+      sendOnSignIn: emailEnabled,
+      expiresIn: 60 * 60,
+      sendVerificationEmail: async ({ user, url, token }) => {
+        await sendTransactionalEmail(environment as Env, {
+          userId: user.id,
+          to: user.email,
+          kind: "verify-email",
+          url,
+          requestId: `verify:${user.id}:${token}`,
+        });
+      },
+    },
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 12,
+      requireEmailVerification: emailEnabled,
+      resetPasswordTokenExpiresIn: 60 * 60,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, url, token }) => {
+        await sendTransactionalEmail(environment as Env, {
+          userId: user.id,
+          to: user.email,
+          kind: "password-reset",
+          url,
+          requestId: `reset:${user.id}:${token}`,
+        });
+      },
+      onPasswordReset: async ({ user }) => {
+        await sendTransactionalEmail(environment as Env, {
+          userId: user.id,
+          to: user.email,
+          kind: "security-alert",
+          text: "你的 CFBBS 密码刚刚被修改。如果这不是你的操作，请立即联系管理员。",
+          requestId: `password-reset-alert:${user.id}:${Date.now()}`,
+        });
+      },
     },
     plugins: [
       username({
@@ -118,12 +177,81 @@ export async function handleAuthRequest(
   request: Request,
   environment: AuthEnvironment,
 ) {
+  const limited = await authRateLimit(request, environment);
+  if (limited) return limited;
   return createAuth(environment).handler(request);
+}
+
+export function authRequest(
+  request: Request,
+  environment: AuthEnvironment,
+  path: string,
+  method: "GET" | "POST",
+  body?: unknown,
+) {
+  const headers = new Headers({
+    origin: environment.APP_ORIGIN,
+  });
+  const cookie = request.headers.get("cookie");
+  if (cookie) headers.set("cookie", cookie);
+  if (body !== undefined) headers.set("content-type", "application/json");
+  return handleAuthRequest(
+    new Request(new URL(path, environment.APP_ORIGIN), {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+    environment,
+  );
+}
+
+async function authRateLimit(request: Request, environment: AuthEnvironment) {
+  if (request.method !== "POST") return null;
+  const path = new URL(request.url).pathname;
+  const isSignIn = /\/sign-in\//.test(path);
+  const isRegister = path.endsWith("/sign-up/email");
+  const isEmailAction =
+    path.endsWith("/request-password-reset") ||
+    path.endsWith("/send-verification-email");
+  if (!isSignIn && !isRegister && !isEmailAction) return null;
+
+  let body: Record<string, unknown> = {};
+  try {
+    const parsed = await request.clone().json();
+    if (parsed && typeof parsed === "object") {
+      body = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Better Auth will return the canonical malformed-body response.
+  }
+  const ip = await consumeRateLimit(environment.FEDIFY_KV, {
+    scope: isRegister ? "register" : "auth-ip",
+    subject: requestIp(request),
+    rule: isRegister ? rateLimitRules.register : rateLimitRules.authIp,
+  });
+  if (!ip.allowed) return rateLimitResponse(ip.retryAfter);
+  if (isSignIn || isEmailAction) {
+    const identifier = String(
+      body.email ?? body.username ?? body.identifier ?? "unknown",
+    ).toLowerCase();
+    const account = await consumeRateLimit(environment.FEDIFY_KV, {
+      scope: "auth-account",
+      subject: identifier,
+      rule: rateLimitRules.authAccount,
+    });
+    if (!account.allowed) return rateLimitResponse(account.retryAfter);
+  }
+  return null;
 }
 
 export async function getSession(
   request: Request,
   environment: AuthEnvironment,
 ) {
-  return createAuth(environment).api.getSession({ headers: request.headers });
+  const session = await createAuth(environment).api.getSession({
+    headers: request.headers,
+  });
+  if (!session) return null;
+  const status = await loadAccountStatus(environment.DB, session.user.id);
+  return status === "active" ? session : null;
 }

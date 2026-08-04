@@ -17,6 +17,11 @@ import {
 import { createThread } from "@/modules/forum/threads/service";
 import { getSession } from "@/modules/identity/auth.server";
 import { validateAttachmentIds } from "@/modules/media";
+import {
+  consumeRateLimit,
+  rateLimitResponse,
+  rateLimitRules,
+} from "@/modules/rate-limit.server";
 
 async function boardPageData(request: Request, env: Env, boardId: string) {
   const cursorValue = new URL(request.url).searchParams.get("cursor");
@@ -80,6 +85,12 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     context.cloudflare.env.DB,
     board.id,
   );
+  const limited = await consumeRateLimit(context.cloudflare.env.FEDIFY_KV, {
+    scope: "write",
+    subject: session.user.id,
+    rule: rateLimitRules.write,
+  });
+  if (!limited.allowed) return rateLimitResponse(limited.retryAfter);
 
   const form = await request.formData();
   const input = validateThreadInput({

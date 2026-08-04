@@ -1,7 +1,10 @@
 import { Form, Link, redirect } from "react-router";
 
 import type { Route } from "./+types/following";
-import { listFollowedRemoteNotes } from "@/modules/federation/remote-note";
+import {
+  decodeRemoteNoteCursor,
+  listFollowedRemoteNotes,
+} from "@/modules/federation/remote-note";
 import { getSession } from "@/modules/identity/auth.server";
 import {
   loadRemoteObjectAttachments,
@@ -11,9 +14,14 @@ import {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const session = await getSession(request, context.cloudflare.env);
   if (!session) throw redirect("/auth/login");
+  const cursorValue = new URL(request.url).searchParams.get("cursor");
+  const cursor = decodeRemoteNoteCursor(cursorValue);
+  if (cursorValue !== null && !cursor)
+    throw new Response("Invalid cursor", { status: 400 });
   const notes = await listFollowedRemoteNotes(
     context.cloudflare.env.DB,
     session.user.id,
+    cursor,
   );
   const attachmentMap = await loadRemoteObjectAttachments(
     context.cloudflare.env.DB,
@@ -24,6 +32,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       ...note,
       attachments: remoteAttachmentsToView(attachmentMap.get(note.uri) ?? []),
     })),
+    nextCursor: notes.nextCursor ?? null,
   };
 }
 
@@ -116,6 +125,14 @@ export default function Following({ loaderData }: Route.ComponentProps) {
           尚未收到已关注账号的公开动态。
         </p>
       )}
+      {loaderData.nextCursor ? (
+        <Link
+          className="mt-5 inline-block text-sm text-blue-700 hover:underline"
+          to={`/following?cursor=${loaderData.nextCursor}`}
+        >
+          加载更多动态
+        </Link>
+      ) : null}
     </main>
   );
 }

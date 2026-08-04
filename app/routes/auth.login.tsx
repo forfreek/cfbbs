@@ -71,6 +71,11 @@ export default function Login() {
           注册账号
         </Link>
       </p>
+      <p className="mt-3 text-sm">
+        <Link className="underline" to="/auth/forgot">
+          忘记密码？
+        </Link>
+      </p>
     </main>
   );
 }

@@ -54,6 +54,35 @@ export type ForumPost = {
   updatedAt: string;
 };
 
+export type ForumPostCursor = { publishedAt: string; id: string };
+
+export function encodeForumPostCursor(cursor: ForumPostCursor) {
+  return btoa(JSON.stringify(cursor))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+}
+
+export function decodeForumPostCursor(value: string | null) {
+  if (!value || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  try {
+    const padded = value.replaceAll("-", "+").replaceAll("_", "/");
+    const parsed: unknown = JSON.parse(
+      atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "=")),
+    );
+    if (!parsed || typeof parsed !== "object") return null;
+    const cursor = parsed as Record<string, unknown>;
+    if (typeof cursor.publishedAt !== "string" || typeof cursor.id !== "string")
+      return null;
+    return {
+      publishedAt: cursor.publishedAt,
+      id: cursor.id,
+    } satisfies ForumPostCursor;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadForumBoard(database: D1Database, boardId: string) {
   return database
     .prepare(
@@ -176,13 +205,28 @@ export async function listForumThreadPosts(
   threadId: string,
   includePrivate: boolean,
   viewerActorId: string | null = null,
+  cursor: ForumPostCursor | null = null,
 ) {
   const visibility = includePrivate ? "" : "AND posts.visibility = 'public'";
+  const cursorPredicate = cursor
+    ? "AND (posts.published_at > ? OR (posts.published_at = ? AND posts.id > ?))"
+    : "";
+  const params = cursor
+    ? [
+        viewerActorId,
+        threadId,
+        viewerActorId,
+        cursor.publishedAt,
+        cursor.publishedAt,
+        cursor.id,
+        51,
+      ]
+    : [viewerActorId, threadId, viewerActorId];
   const posts = await database
     .prepare(
-      `SELECT posts.id, posts.thread_id AS threadId, posts.parent_post_id AS parentPostId, posts.author_user_id AS authorUserId, COALESCE(profiles.handle, federation_actors.uri) AS authorHandle, COALESCE(profiles.display_name, federation_actors.name) AS authorName, posts.author_actor_id AS authorActorUri, posts.federation_object_id AS federationObjectId, posts.rendered_html AS renderedHtml, posts.visibility, (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id) AS likeCount, EXISTS(SELECT 1 FROM post_likes WHERE post_likes.post_id = posts.id AND post_likes.actor_id = ?) AS viewerLiked, posts.published_at AS publishedAt, posts.updated_at AS updatedAt FROM posts LEFT JOIN profiles ON profiles.user_id = posts.author_user_id LEFT JOIN federation_actors ON federation_actors.id = posts.author_actor_id WHERE posts.thread_id = ? AND posts.state = 'published' AND (posts.origin = 'local' OR federation_actors.blocked_at IS NULL) AND NOT EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = posts.author_actor_id) ${visibility} ORDER BY posts.published_at ASC, posts.id ASC`,
+      `SELECT posts.id, posts.thread_id AS threadId, posts.parent_post_id AS parentPostId, posts.author_user_id AS authorUserId, COALESCE(profiles.handle, federation_actors.uri) AS authorHandle, COALESCE(profiles.display_name, federation_actors.name) AS authorName, posts.author_actor_id AS authorActorUri, posts.federation_object_id AS federationObjectId, posts.rendered_html AS renderedHtml, posts.visibility, (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id) AS likeCount, EXISTS(SELECT 1 FROM post_likes WHERE post_likes.post_id = posts.id AND post_likes.actor_id = ?) AS viewerLiked, posts.published_at AS publishedAt, posts.updated_at AS updatedAt FROM posts LEFT JOIN profiles ON profiles.user_id = posts.author_user_id LEFT JOIN federation_actors ON federation_actors.id = posts.author_actor_id WHERE posts.thread_id = ? AND posts.state = 'published' AND (posts.origin = 'local' OR federation_actors.blocked_at IS NULL) AND NOT EXISTS (SELECT 1 FROM user_actor_preferences WHERE user_actor_preferences.user_id = ? AND user_actor_preferences.actor_id = posts.author_actor_id) ${visibility} ${cursorPredicate} ORDER BY posts.published_at ASC, posts.id ASC LIMIT ${cursor ? "?" : "50"}`,
     )
-    .bind(viewerActorId, threadId, viewerActorId)
+    .bind(...params)
     .all<ForumPost>();
   const blockedDomains = await blockedInstanceDomainsForRemoteUris(
     database,
@@ -190,12 +234,22 @@ export async function listForumThreadPosts(
       .filter((post) => post.authorUserId === null)
       .map((post) => post.authorActorUri),
   );
+  const results = posts.results.slice(0, 50);
+  const finalPost = results.at(-1);
   return {
     ...posts,
-    results: posts.results.filter((post) => {
+    results: results.filter((post) => {
       if (post.authorUserId !== null || !post.authorActorUri) return true;
       const domain = remoteInstanceDomain(post.authorActorUri);
       return domain === null || !blockedDomains.has(domain);
     }),
+    ...(posts.results.length > 50 && finalPost
+      ? {
+          nextCursor: encodeForumPostCursor({
+            publishedAt: finalPost.publishedAt,
+            id: finalPost.id,
+          }),
+        }
+      : {}),
   };
 }
