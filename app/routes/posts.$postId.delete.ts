@@ -11,12 +11,19 @@ import {
 } from "@/modules/forum/posts/lifecycle";
 import { canManageLocalPost } from "@/modules/forum/posts/ownership";
 import { loadForumBoard } from "@/modules/forum/read.server";
-import { getSession } from "@/modules/identity/auth.server";
+import { requireVerifiedSession } from "@/modules/identity/auth.server";
 import { authorizeDatabase } from "@/modules/permissions/authorization.server";
 
 export async function action({ params, request, context }: Route.ActionArgs) {
-  const session = await getSession(request, context.cloudflare.env);
-  if (!session) throw redirect("/auth/login");
+  const session = await requireVerifiedSession(
+    request,
+    context.cloudflare.env,
+  ).catch((error) => {
+    if (error instanceof Response && error.status === 401) {
+      throw redirect("/auth/login");
+    }
+    throw error;
+  });
   const post = await loadMutableForumPost(
     context.cloudflare.env.DB,
     params.postId ?? "",

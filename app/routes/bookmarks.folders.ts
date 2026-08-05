@@ -1,4 +1,4 @@
-import { data, redirect } from "react-router";
+import { redirect } from "react-router";
 import type { Route } from "./+types/bookmarks.folders";
 import { getSession } from "@/modules/identity/auth.server";
 import {
@@ -22,6 +22,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   const session = await getSession(request, context.cloudflare.env);
   if (!session) throw redirect("/auth/login");
   const form = await request.formData();
+  const returnToValue = String(form.get("returnTo") ?? "");
+  const returnTo = returnToValue.startsWith("/bookmarks")
+    ? returnToValue
+    : "/bookmarks";
   try {
     if (String(form.get("intent")) === "move") {
       await moveBookmark(context.cloudflare.env.DB, {
@@ -30,7 +34,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         postId: String(form.get("postId")),
         add: String(form.get("add")) !== "false",
       });
-      return { ok: true };
+      return redirect(returnTo);
     }
     if (String(form.get("intent")) === "rename") {
       const name = String(form.get("name") ?? "").trim();
@@ -46,7 +50,7 @@ export async function action({ request, context }: Route.ActionArgs) {
           session.user.id,
         )
         .run();
-      return { ok: true };
+      return redirect(returnTo);
     }
     if (String(form.get("intent")) === "delete") {
       const folderId = String(form.get("folderId"));
@@ -58,19 +62,19 @@ export async function action({ request, context }: Route.ActionArgs) {
           "DELETE FROM bookmark_folders WHERE id = ? AND user_id = ?",
         ).bind(folderId, session.user.id),
       ]);
-      return { ok: true };
+      return redirect(returnTo);
     }
-    return {
-      folder: await createBookmarkFolder(
-        context.cloudflare.env.DB,
-        session.user.id,
-        String(form.get("name") ?? ""),
-      ),
-    };
+    await createBookmarkFolder(
+      context.cloudflare.env.DB,
+      session.user.id,
+      String(form.get("name") ?? ""),
+    );
+    return redirect(returnTo);
   } catch (error) {
-    return data(
-      { error: error instanceof Error ? error.message : "操作失败。" },
-      { status: 400 },
+    const message = error instanceof Error ? error.message : "操作失败。";
+    const separator = returnTo.includes("?") ? "&" : "?";
+    throw redirect(
+      `${returnTo}${separator}error=${encodeURIComponent(message)}`,
     );
   }
 }

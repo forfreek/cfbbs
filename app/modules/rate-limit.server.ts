@@ -38,22 +38,39 @@ export async function consumeRateLimit(
   },
 ) {
   if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function") {
-    return { allowed: true, remaining: input.rule.limit };
+    return { allowed: true, remaining: input.rule.limit, degraded: true };
   }
   const now = Date.now();
   const windowStart = Math.floor(now / (input.rule.windowSeconds * 1_000));
   const expiresAt = (windowStart + 1) * input.rule.windowSeconds * 1_000;
   const key = `rl:v1:${keyPart(input.scope)}:${keyPart(input.subject)}:${windowStart}`;
-  const current = await kv.get<RateLimitValue>(key, "json");
-  const count = current && current.expiresAt > now ? current.count + 1 : 1;
-  await kv.put(key, JSON.stringify({ count, expiresAt }), {
-    expirationTtl: Math.max(1, Math.ceil((expiresAt - now) / 1_000)),
-  });
-  return {
-    allowed: count <= input.rule.limit,
-    remaining: Math.max(0, input.rule.limit - count),
-    retryAfter: Math.max(1, Math.ceil((expiresAt - now) / 1_000)),
-  };
+  try {
+    const current = await kv.get<RateLimitValue>(key, "json");
+    const count = current && current.expiresAt > now ? current.count + 1 : 1;
+    await kv.put(key, JSON.stringify({ count, expiresAt }), {
+      expirationTtl: Math.max(1, Math.ceil((expiresAt - now) / 1_000)),
+    });
+    return {
+      allowed: count <= input.rule.limit,
+      remaining: Math.max(0, input.rule.limit - count),
+      retryAfter: Math.max(1, Math.ceil((expiresAt - now) / 1_000)),
+      degraded: false,
+    };
+  } catch (error) {
+    // KV is an availability aid; a transient binding failure must not turn
+    // every public page into a 500. Keep the event useful without logging the
+    // user-controlled subject or any request contents.
+    console.warn("Rate-limit storage unavailable", {
+      scope: input.scope,
+      error: error instanceof Error ? error.name : "unknown",
+    });
+    return {
+      allowed: true,
+      remaining: input.rule.limit,
+      retryAfter: input.rule.windowSeconds,
+      degraded: true,
+    };
+  }
 }
 
 export function rateLimitResponse(retryAfter = 60) {

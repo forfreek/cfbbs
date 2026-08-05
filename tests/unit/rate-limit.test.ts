@@ -50,4 +50,22 @@ describe("KV rate limiting", () => {
     ).toBe("198.51.100.3");
     expect(rateLimitRules.upload.limit).toBeGreaterThan(0);
   });
+
+  it("fails open when the KV binding is temporarily unavailable", async () => {
+    const kv = {
+      async get() {
+        throw new Error("KV unavailable");
+      },
+      async put() {
+        throw new Error("KV unavailable");
+      },
+    } as unknown as KVNamespace;
+    await expect(
+      consumeRateLimit(kv, {
+        scope: "search",
+        subject: "user-1",
+        rule: rateLimitRules.search,
+      }),
+    ).resolves.toMatchObject({ allowed: true, degraded: true });
+  });
 });

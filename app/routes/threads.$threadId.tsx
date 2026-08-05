@@ -1,4 +1,11 @@
-import { Form, Link, data, redirect, useActionData } from "react-router";
+import {
+  Form,
+  Link,
+  data,
+  redirect,
+  useActionData,
+  useNavigation,
+} from "react-router";
 import { useState } from "react";
 
 import type { Route } from "./+types/threads.$threadId";
@@ -24,7 +31,10 @@ import {
   remoteAttachmentsToView,
   validateAttachmentIds,
 } from "@/modules/media";
-import { getSession } from "@/modules/identity/auth.server";
+import {
+  getSession,
+  requireVerifiedSession,
+} from "@/modules/identity/auth.server";
 import { loadThreadSubscription } from "@/modules/forum/subscriptions";
 import { MediaGallery } from "@/components/media-gallery";
 import { draftStorageKey } from "@/components/draft-storage";
@@ -35,6 +45,7 @@ import {
   rateLimitRules,
 } from "@/modules/rate-limit.server";
 import { validatePollInput } from "@/modules/forum/content";
+import { resolveQuoteTarget } from "@/modules/forum/quotes";
 import { listReactionSummary, loadPollView } from "@/modules/forum/p2";
 
 async function threadPageData(request: Request, env: Env, threadId: string) {
@@ -53,7 +64,7 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
   const [
     canViewBoard,
     canViewPrivate,
-    canReply,
+    canReplyPermission,
     boardIsPrivate,
     editAny,
     deleteAny,
@@ -89,6 +100,8 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
       ? loadThreadSubscription(env.DB, userId, thread.id)
       : Promise.resolve(null),
   ]);
+  const canReply = canReplyPermission && Boolean(session?.user.emailVerified);
+  const requiresVerification = Boolean(session && !session.user.emailVerified);
   if (
     !canViewBoard ||
     (thread.firstPostVisibility === "private" && !canViewPrivate)
@@ -153,6 +166,7 @@ async function threadPageData(request: Request, env: Env, threadId: string) {
     nextCursor: posts.nextCursor ?? null,
     session,
     canReply,
+    requiresVerification,
     canEditAny: editAny.allowed,
     canDeleteAny: deleteAny.allowed,
     canPin: canPin.allowed,
@@ -166,8 +180,15 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 }
 
 export async function action({ params, request, context }: Route.ActionArgs) {
-  const session = await getSession(request, context.cloudflare.env);
-  if (!session) throw redirect("/auth/login");
+  const session = await requireVerifiedSession(
+    request,
+    context.cloudflare.env,
+  ).catch((error) => {
+    if (error instanceof Response && error.status === 401) {
+      throw redirect("/auth/login");
+    }
+    throw error;
+  });
 
   const thread = await loadForumThread(
     context.cloudflare.env.DB,
@@ -225,6 +246,16 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       })
     : null;
   if (poll && !poll.ok) return data({ error: poll.message }, { status: 400 });
+  const rawQuoteUri = String(form.get("quoteUri") ?? "").trim();
+  const rawQuotePostId = String(form.get("quotePostId") ?? "").trim();
+  const quote = rawQuoteUri
+    ? await resolveQuoteTarget(context.cloudflare.env.DB, {
+        targetPostId: rawQuotePostId || null,
+        targetUri: rawQuoteUri,
+      })
+    : null;
+  if (quote && !quote.ok)
+    return data({ error: quote.message }, { status: 400 });
 
   const rawReplyTo = String(form.get("replyTo") ?? "");
   const replyTo = rawReplyTo || thread.firstPostId;
@@ -250,26 +281,41 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     boardIsPrivate || thread.firstPostVisibility === "private"
       ? "private"
       : "public";
-  await createReply(context.cloudflare.env.DB, {
-    postId: crypto.randomUUID(),
-    revisionId: crypto.randomUUID(),
-    threadId: thread.id,
-    parentPostId: replyTo,
-    authorUserId: session.user.id,
-    markdown: input.value.markdown,
-    attachmentIds: attachments.ids,
-    visibility,
-    ...(poll?.ok ? { poll: poll.value } : {}),
-    ...(visibility === "public"
-      ? {
-          federation: {
-            eventId: crypto.randomUUID(),
-            actorId: session.user.id,
-            origin: context.cloudflare.env.APP_ORIGIN,
-          },
-        }
-      : {}),
-  });
+  const postId = String(form.get("postId") || crypto.randomUUID());
+  try {
+    await createReply(context.cloudflare.env.DB, {
+      postId,
+      revisionId: crypto.randomUUID(),
+      threadId: thread.id,
+      parentPostId: replyTo,
+      authorUserId: session.user.id,
+      markdown: input.value.markdown,
+      attachmentIds: attachments.ids,
+      visibility,
+      ...(poll?.ok ? { poll: poll.value } : {}),
+      ...(quote?.ok ? { quote: quote.quote } : {}),
+      ...(visibility === "public"
+        ? {
+            federation: {
+              eventId: crypto.randomUUID(),
+              actorId: session.user.id,
+              origin: context.cloudflare.env.APP_ORIGIN,
+            },
+          }
+        : {}),
+    });
+  } catch (error) {
+    console.error("Create reply failed", {
+      error: error instanceof Error ? error.name : "unknown",
+    });
+    return data(
+      {
+        error:
+          error instanceof Error ? error.message : "回复失败，请稍后重试。",
+      },
+      { status: 400 },
+    );
+  }
   return redirect(`/threads/${thread.id}`);
 }
 
@@ -281,6 +327,7 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
     posts,
     session,
     canReply,
+    requiresVerification,
     canEditAny,
     canDeleteAny,
     canPin,
@@ -288,6 +335,13 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
     subscription,
   } = loaderData;
   const [replyTo, setReplyTo] = useState<string>(thread.firstPostId);
+  const [quoteTarget, setQuoteTarget] = useState<{
+    postId: string;
+    uri: string;
+    title: string;
+  } | null>(null);
+  const [submissionId] = useState(() => crypto.randomUUID());
+  const navigation = useNavigation();
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <p className="text-sm text-slate-500">
@@ -524,19 +578,25 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
                     Boost
                   </button>
                 </Form>
-                <Form method="post" action={`/posts/${post.id}/quote`}>
-                  <input
-                    type="hidden"
-                    name="targetUri"
-                    value={post.federationObjectId ?? ""}
-                  />
-                  <button
-                    disabled={!post.federationObjectId}
-                    className="text-sm text-slate-600 hover:text-blue-700"
-                  >
-                    引用
-                  </button>
-                </Form>
+                <button
+                  type="button"
+                  disabled={!post.federationObjectId}
+                  className="text-sm text-slate-600 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => {
+                    if (!post.federationObjectId) return;
+                    setQuoteTarget({
+                      postId: post.id,
+                      uri: post.federationObjectId,
+                      title: thread.title,
+                    });
+                    setReplyTo(post.id);
+                    document
+                      .getElementById("reply-composer")
+                      ?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                >
+                  引用
+                </button>
                 <button
                   type="button"
                   className="text-sm text-slate-600 hover:text-blue-700"
@@ -608,7 +668,17 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
         </Link>
       ) : null}
 
-      {canReply && !thread.isLocked ? (
+      {requiresVerification ? (
+        <p className="mt-8 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          请先验证邮箱后再回复或发起联邦互动。{" "}
+          <Link
+            className="font-medium underline"
+            to={`/auth/verify?email=${encodeURIComponent(session?.user.email ?? "")}`}
+          >
+            重发验证邮件
+          </Link>
+        </p>
+      ) : canReply && !thread.isLocked ? (
         <section className="mt-8 rounded-lg border p-5">
           <h2 className="font-semibold">回复主题</h2>
           {actionData?.error ? (
@@ -617,7 +687,28 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
             </p>
           ) : null}
           <Form method="post" id="reply-composer" className="mt-4 grid gap-4">
+            <input type="hidden" name="postId" value={submissionId} />
             <input type="hidden" name="replyTo" value={replyTo} />
+            {quoteTarget ? (
+              <>
+                <input
+                  type="hidden"
+                  name="quotePostId"
+                  value={quoteTarget.postId}
+                />
+                <input type="hidden" name="quoteUri" value={quoteTarget.uri} />
+                <p className="rounded-md border-l-2 border-blue-400 bg-slate-50 p-3 text-sm text-slate-600">
+                  正在引用“{quoteTarget.title}”中的公开内容。{" "}
+                  <button
+                    type="button"
+                    className="font-medium underline"
+                    onClick={() => setQuoteTarget(null)}
+                  >
+                    取消引用
+                  </button>
+                </p>
+              </>
+            ) : null}
             {replyTo !== thread.firstPostId ? (
               <p className="text-sm text-slate-500">
                 正在回复 #{replyTo.slice(0, 8)}{" "}
@@ -662,8 +753,11 @@ export default function ThreadPage({ loaderData }: Route.ComponentProps) {
                 </label>
               </div>
             </details>
-            <button className="w-fit rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-              发表回复
+            <button
+              disabled={navigation.state !== "idle"}
+              className="w-fit rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+            >
+              {navigation.state === "submitting" ? "正在发表…" : "发表回复"}
             </button>
           </Form>
         </section>

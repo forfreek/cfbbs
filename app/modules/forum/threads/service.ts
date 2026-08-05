@@ -8,8 +8,8 @@ import {
   loadOwnedMediaByIds,
   postAttachmentInsertStatements,
 } from "@/modules/media";
-import { syncPostContentMetadata } from "@/modules/forum/content";
-import { createPoll } from "@/modules/forum/p2";
+import { contentMetadataStatements } from "@/modules/forum/content";
+import { pollInsertStatements } from "@/modules/forum/p2";
 
 export type NewThread = {
   threadId: string;
@@ -27,9 +27,46 @@ export type NewThread = {
     closesAt: string | null;
     options: readonly string[];
   };
+  quote?: {
+    targetPostId: string | null;
+    targetUri: string;
+    snapshotHtml?: string | null;
+    snapshotTitle?: string | null;
+  } | null;
 };
 
 export async function createThread(database: D1Database, input: NewThread) {
+  if (input.quote && input.visibility !== "public") {
+    throw new Error("私密帖子不能包含公开引用。");
+  }
+  const existingStatement = database
+    .prepare(
+      "SELECT threads.id, posts.id AS postId, posts.author_user_id AS authorUserId FROM threads INNER JOIN posts ON posts.id = threads.first_post_id WHERE threads.id = ? OR posts.id = ? LIMIT 1",
+    )
+    .bind(input.threadId, input.postId) as unknown as {
+    first?: <T>() => Promise<T | null>;
+  };
+  const existing = existingStatement.first
+    ? await existingStatement.first<{
+        id: string;
+        postId: string;
+        authorUserId: string | null;
+      }>()
+    : null;
+  if (existing) {
+    if (
+      existing.authorUserId === input.authorUserId &&
+      existing.id === input.threadId &&
+      existing.postId === input.postId
+    ) {
+      return {
+        threadId: existing.id,
+        postId: existing.postId,
+        duplicate: true as const,
+      };
+    }
+    throw new Error("主题提交标识已被使用。");
+  }
   const now = new Date().toISOString();
   const html = renderMarkdown(input.markdown);
   const attachmentIds = input.attachmentIds ?? [];
@@ -58,7 +95,19 @@ export async function createThread(database: D1Database, input: NewThread) {
     attachmentIds,
     markdown: input.markdown,
     poll: input.poll,
+    quote: input.quote
+      ? {
+          uri: input.quote.targetUri,
+          html: input.quote.snapshotHtml,
+          title: input.quote.snapshotTitle,
+        }
+      : null,
     publication: input.federation,
+  });
+  const metadata = await contentMetadataStatements(database, {
+    postId: input.postId,
+    markdown: input.markdown,
+    createdAt: now,
   });
   await database.batch([
     database
@@ -113,12 +162,35 @@ export async function createThread(database: D1Database, input: NewThread) {
         ]
       : []),
     ...(outbox ? [outbox] : []),
+    ...metadata.statements,
+    ...(input.quote
+      ? [
+          database
+            .prepare(
+              "INSERT OR IGNORE INTO post_quotes (id, post_id, target_post_id, target_uri, snapshot_html, snapshot_title, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(
+              crypto.randomUUID(),
+              input.postId,
+              input.quote.targetPostId,
+              input.quote.targetUri,
+              input.quote.snapshotHtml ?? null,
+              input.quote.snapshotTitle ?? null,
+              now,
+            ),
+        ]
+      : []),
+    ...(input.poll
+      ? pollInsertStatements(database, {
+          postId: input.postId,
+          ...input.poll,
+          createdAt: now,
+        })
+      : []),
   ]);
-  await syncPostContentMetadata(database, {
+  return {
+    threadId: input.threadId,
     postId: input.postId,
-    markdown: input.markdown,
-    createdAt: now,
-  });
-  if (input.poll)
-    await createPoll(database, { postId: input.postId, ...input.poll });
+    duplicate: false as const,
+  };
 }

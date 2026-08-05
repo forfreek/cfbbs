@@ -43,5 +43,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     postId: post.id,
     bookmarked,
   });
+  const returnTo = String(form.get("returnTo") ?? "");
+  if (returnTo.startsWith("/bookmarks")) return redirect(returnTo);
   return redirect(`/threads/${post.threadId}#post-${post.id}`);
 }

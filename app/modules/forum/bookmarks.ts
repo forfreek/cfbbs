@@ -82,10 +82,16 @@ export async function setPostBookmark(
       .bind(input.userId, input.postId, new Date().toISOString())
       .run();
   } else {
-    await database
-      .prepare("DELETE FROM post_bookmarks WHERE user_id = ? AND post_id = ?")
-      .bind(input.userId, input.postId)
-      .run();
+    await database.batch([
+      database
+        .prepare("DELETE FROM post_bookmarks WHERE user_id = ? AND post_id = ?")
+        .bind(input.userId, input.postId),
+      database
+        .prepare(
+          "DELETE FROM bookmark_folder_items WHERE user_id = ? AND post_id = ?",
+        )
+        .bind(input.userId, input.postId),
+    ]);
   }
   return { ok: true as const, bookmarked: input.bookmarked };
 }

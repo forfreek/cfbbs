@@ -1,4 +1,11 @@
-import { Form, Link, data, redirect, useActionData } from "react-router";
+import {
+  Form,
+  Link,
+  data,
+  redirect,
+  useActionData,
+  useNavigation,
+} from "react-router";
 import { useState } from "react";
 
 import type { Route } from "./+types/boards.$boardId";
@@ -17,7 +24,10 @@ import {
 } from "@/modules/forum/read.server";
 import { createThread } from "@/modules/forum/threads/service";
 import { validatePollInput } from "@/modules/forum/content";
-import { getSession } from "@/modules/identity/auth.server";
+import {
+  getSession,
+  requireVerifiedSession,
+} from "@/modules/identity/auth.server";
 import { validateAttachmentIds } from "@/modules/media";
 import {
   consumeRateLimit,
@@ -25,6 +35,7 @@ import {
   rateLimitRules,
 } from "@/modules/rate-limit.server";
 import { draftStorageKey } from "@/components/draft-storage";
+import { resolveQuoteTarget } from "@/modules/forum/quotes";
 
 async function boardPageData(request: Request, env: Env, boardId: string) {
   const cursorValue = new URL(request.url).searchParams.get("cursor");
@@ -52,7 +63,13 @@ async function boardPageData(request: Request, env: Env, boardId: string) {
     boardIsPrivate || canViewPrivate,
     cursor,
   );
-  return { board, session, canCreate, threads };
+  return {
+    board,
+    session,
+    canCreate: canCreate && Boolean(session?.user.emailVerified),
+    requiresVerification: Boolean(session && !session.user.emailVerified),
+    threads,
+  };
 }
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
@@ -61,8 +78,15 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 
 export async function action({ params, request, context }: Route.ActionArgs) {
   const boardId = params.boardId ?? "";
-  const session = await getSession(request, context.cloudflare.env);
-  if (!session) throw redirect("/auth/login");
+  const session = await requireVerifiedSession(
+    request,
+    context.cloudflare.env,
+  ).catch((error) => {
+    if (error instanceof Response && error.status === 401) {
+      throw redirect("/auth/login");
+    }
+    throw error;
+  });
 
   const board = await loadForumBoard(context.cloudflare.env.DB, boardId);
   if (!board) throw new Response("Not found", { status: 404 });
@@ -116,36 +140,65 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       })
     : null;
   if (poll && !poll.ok) return data({ error: poll.message }, { status: 400 });
+  const rawQuoteUri = String(form.get("quoteUri") ?? "").trim();
+  const rawQuotePostId = String(form.get("quotePostId") ?? "").trim();
+  const quote = rawQuoteUri
+    ? await resolveQuoteTarget(context.cloudflare.env.DB, {
+        targetPostId: rawQuotePostId || null,
+        targetUri: rawQuoteUri,
+      })
+    : null;
+  if (quote && !quote.ok)
+    return data({ error: quote.message }, { status: 400 });
 
-  const threadId = crypto.randomUUID();
-  await createThread(context.cloudflare.env.DB, {
-    threadId,
-    postId: crypto.randomUUID(),
-    revisionId: crypto.randomUUID(),
-    boardId: board.id,
-    authorUserId: session.user.id,
-    title: input.value.title,
-    markdown: input.value.markdown,
-    attachmentIds: attachments.ids,
-    visibility: boardIsPrivate ? "private" : "public",
-    ...(poll?.ok ? { poll: poll.value } : {}),
-    ...(!boardIsPrivate
-      ? {
-          federation: {
-            eventId: crypto.randomUUID(),
-            actorId: session.user.id,
-            origin: context.cloudflare.env.APP_ORIGIN,
-          },
-        }
-      : {}),
-  });
+  const threadId = String(form.get("threadId") || crypto.randomUUID());
+  const postId = String(form.get("postId") || crypto.randomUUID());
+  try {
+    await createThread(context.cloudflare.env.DB, {
+      threadId,
+      postId,
+      revisionId: crypto.randomUUID(),
+      boardId: board.id,
+      authorUserId: session.user.id,
+      title: input.value.title,
+      markdown: input.value.markdown,
+      attachmentIds: attachments.ids,
+      visibility: boardIsPrivate ? "private" : "public",
+      ...(poll?.ok ? { poll: poll.value } : {}),
+      ...(quote?.ok ? { quote: quote.quote } : {}),
+      ...(!boardIsPrivate
+        ? {
+            federation: {
+              eventId: crypto.randomUUID(),
+              actorId: session.user.id,
+              origin: context.cloudflare.env.APP_ORIGIN,
+            },
+          }
+        : {}),
+    });
+  } catch (error) {
+    console.error("Create thread failed", {
+      error: error instanceof Error ? error.name : "unknown",
+    });
+    return data(
+      {
+        error:
+          error instanceof Error ? error.message : "发布主题失败，请稍后重试。",
+      },
+      { status: 400 },
+    );
+  }
   return redirect(`/threads/${threadId}`);
 }
 
 export default function BoardPage({ loaderData }: Route.ComponentProps) {
   const actionData = useActionData<typeof action>();
-  const { board, session, canCreate, threads } = loaderData;
+  const { board, session, canCreate, requiresVerification, threads } =
+    loaderData;
   const [title, setTitle] = useState("");
+  const [threadSubmissionId] = useState(() => crypto.randomUUID());
+  const [postSubmissionId] = useState(() => crypto.randomUUID());
+  const navigation = useNavigation();
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
       <p className="text-sm text-slate-500">板块</p>
@@ -156,7 +209,17 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
         <p className="mt-3 text-slate-600">{board.description}</p>
       ) : null}
 
-      {canCreate ? (
+      {requiresVerification ? (
+        <p className="mt-8 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          请先验证邮箱后再发布主题。{" "}
+          <Link
+            className="font-medium underline"
+            to={`/auth/verify?email=${encodeURIComponent(session?.user.email ?? "")}`}
+          >
+            重发验证邮件
+          </Link>
+        </p>
+      ) : canCreate ? (
         <section id="create-thread" className="mt-10 rounded-lg border p-5">
           <h2 className="font-semibold">发布主题</h2>
           {actionData?.error ? (
@@ -165,6 +228,8 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
             </p>
           ) : null}
           <Form method="post" className="mt-4 grid gap-4">
+            <input type="hidden" name="threadId" value={threadSubmissionId} />
+            <input type="hidden" name="postId" value={postSubmissionId} />
             <label className="grid gap-1 text-sm font-medium">
               标题
               <input
@@ -211,8 +276,11 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
                 </label>
               </div>
             </details>
-            <button className="w-fit rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-              发布主题
+            <button
+              disabled={navigation.state !== "idle"}
+              className="w-fit rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+            >
+              {navigation.state === "submitting" ? "正在发布…" : "发布主题"}
             </button>
           </Form>
         </section>

@@ -16,7 +16,10 @@ import {
   decodeSearchCursor,
   searchLocalPostsPage,
 } from "@/modules/forum/search/service";
-import { getSession } from "@/modules/identity/auth.server";
+import {
+  getSession,
+  requireVerifiedSession,
+} from "@/modules/identity/auth.server";
 import {
   consumeRateLimit,
   rateLimitResponse,
@@ -53,7 +56,21 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const cursor = decodeSearchCursor(cursorValue);
   if (cursorValue !== null && !cursor)
     throw new Response("Invalid cursor", { status: 400 });
-  const session = await getSession(request, context.cloudflare.env);
+  let session: Awaited<ReturnType<typeof getSession>>;
+  try {
+    session = await getSession(request, context.cloudflare.env);
+  } catch {
+    return {
+      query,
+      results: [],
+      nextCursor: null,
+      remoteLookup: null,
+      remoteLookupError: null,
+      searchError: "暂时无法读取登录状态，请稍后重试。",
+      session: null,
+      followingRemote: false,
+    };
+  }
   const remoteTarget = parseRemoteLookupTarget(query);
   if (remoteTarget) {
     try {
@@ -73,6 +90,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         nextCursor: null,
         remoteLookup,
         remoteLookupError: null,
+        searchError: null,
         session,
         followingRemote,
       };
@@ -83,22 +101,37 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         nextCursor: null,
         remoteLookup: null,
         remoteLookupError: "无法获取这个远端 ActivityPub 资源。",
+        searchError: null,
         session,
         followingRemote: false,
       };
     }
   }
-  const page = await searchLocalPostsPage(
-    context.cloudflare.env.DB,
-    query,
-    cursor,
-  );
+  let page;
+  try {
+    page = await searchLocalPostsPage(context.cloudflare.env.DB, query, cursor);
+  } catch (error) {
+    console.error("Local search failed", {
+      error: error instanceof Error ? error.name : "unknown",
+    });
+    return {
+      query,
+      results: [],
+      nextCursor: null,
+      remoteLookup: null,
+      remoteLookupError: null,
+      searchError: "搜索服务暂时不可用，请稍后重试。",
+      session,
+      followingRemote: false,
+    };
+  }
   return {
     query,
     results: page.results,
     nextCursor: page.nextCursor,
     remoteLookup: null,
     remoteLookupError: null,
+    searchError: null,
     session,
     followingRemote: false,
   };
@@ -119,8 +152,15 @@ async function requireRemoteActor(
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const session = await getSession(request, context.cloudflare.env);
-  if (!session) throw redirect("/auth/login");
+  const session = await requireVerifiedSession(
+    request,
+    context.cloudflare.env,
+  ).catch((error) => {
+    if (error instanceof Response && error.status === 401) {
+      throw redirect("/auth/login");
+    }
+    throw error;
+  });
 
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
@@ -186,7 +226,9 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
   const actionData = useActionData<typeof action>();
   const searched = loaderData.query.trim().length > 0;
   const canFollowRemote =
-    loaderData.session !== null && loaderData.remoteLookup?.kind === "actor";
+    loaderData.session !== null &&
+    loaderData.session.user.emailVerified &&
+    loaderData.remoteLookup?.kind === "actor";
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <div className="flex items-baseline justify-between gap-4">
@@ -262,6 +304,14 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
           {loaderData.remoteLookupError}
         </p>
       ) : null}
+      {loaderData.searchError ? (
+        <p
+          role="alert"
+          className="mt-8 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+          {loaderData.searchError}
+        </p>
+      ) : null}
       {loaderData.results.length > 0 ? (
         <section className="mt-8">
           <h2 className="text-sm font-medium text-slate-500">本地结果</h2>
@@ -287,7 +337,8 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
             ))}
           </ol>
         </section>
-      ) : searched &&
+      ) : !loaderData.searchError &&
+        searched &&
         !loaderData.remoteLookup &&
         !loaderData.remoteLookupError ? (
         <p className="mt-8 text-sm text-slate-500">没有找到匹配的本地内容。</p>

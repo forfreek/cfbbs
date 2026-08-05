@@ -59,8 +59,26 @@ export async function createPoll(
     options: readonly string[];
   },
 ) {
-  const now = new Date().toISOString();
-  await database.batch([
+  await database.batch(
+    pollInsertStatements(database, {
+      ...input,
+      createdAt: new Date().toISOString(),
+    }),
+  );
+}
+
+export function pollInsertStatements(
+  database: D1Database,
+  input: {
+    postId: string;
+    multiple: boolean;
+    closesAt: string | null;
+    options: readonly string[];
+    createdAt: string;
+  },
+) {
+  const now = input.createdAt;
+  return [
     database
       .prepare(
         "INSERT INTO polls (post_id, multiple, closes_at, created_at) VALUES (?, ?, ?, ?)",
@@ -73,7 +91,7 @@ export async function createPoll(
         )
         .bind(crypto.randomUUID(), input.postId, position, label),
     ),
-  ]);
+  ];
 }
 
 export async function voteInPoll(
@@ -196,7 +214,7 @@ export async function listBookmarkFolders(
 ) {
   const rows = await database
     .prepare(
-      "SELECT id, name, created_at AS createdAt, updated_at AS updatedAt, (SELECT COUNT(*) FROM bookmark_folder_items WHERE folder_id = bookmark_folders.id) AS itemCount FROM bookmark_folders WHERE user_id = ? ORDER BY updated_at DESC, id DESC",
+      "SELECT id, name, created_at AS createdAt, updated_at AS updatedAt, (SELECT COUNT(*) FROM bookmark_folder_items INNER JOIN post_bookmarks ON post_bookmarks.user_id = bookmark_folder_items.user_id AND post_bookmarks.post_id = bookmark_folder_items.post_id WHERE bookmark_folder_items.folder_id = bookmark_folders.id) AS itemCount FROM bookmark_folders WHERE user_id = ? ORDER BY updated_at DESC, id DESC",
     )
     .bind(userId)
     .all<BookmarkFolder>();
@@ -240,6 +258,13 @@ export async function moveBookmark(
     .bind(input.folderId, input.userId)
     .first();
   if (!folder) throw new Error("收藏夹不存在。");
+  const bookmark = await database
+    .prepare(
+      "SELECT 1 AS present FROM post_bookmarks WHERE user_id = ? AND post_id = ? LIMIT 1",
+    )
+    .bind(input.userId, input.postId)
+    .first();
+  if (!bookmark) throw new Error("请先收藏帖子，再将它加入收藏夹。");
   if (input.add) {
     await database
       .prepare(

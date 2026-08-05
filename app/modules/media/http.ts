@@ -19,53 +19,79 @@ function json(data: unknown, status = 200) {
 }
 
 export async function handleMediaUpload(request: Request, env: Env) {
-  if (request.method !== "POST") {
-    return json({ ok: false, message: "Method not allowed." }, 405);
-  }
-  const session = await getSession(request, env);
-  if (!session) {
-    return json({ ok: false, message: "请先登录。" }, 401);
-  }
-  const limited = await consumeRateLimit(env.FEDIFY_KV, {
-    scope: "upload",
-    subject: session.user.id,
-    rule: rateLimitRules.upload,
-  });
-  if (!limited.allowed) return rateLimitResponse(limited.retryAfter);
-  const store = createMediaStoreFromEnv(env);
-  if (!store) {
-    return json(
-      {
-        ok: false,
-        message:
-          "媒体存储未配置。请设置 S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY。",
-      },
-      503,
-    );
-  }
-
-  let form: FormData;
   try {
-    form = await request.formData();
-  } catch {
-    return json({ ok: false, message: "无法解析上传内容。" }, 400);
-  }
-  const file = form.get("file");
-  if (!(file instanceof File)) {
-    return json({ ok: false, message: "请选择要上传的文件。" }, 400);
-  }
-  const contentType = file.type || "application/octet-stream";
-  const preliminary = validateUploadFile({
-    contentType,
-    byteSize: file.size,
-    filename: file.name || "upload.bin",
-  });
-  if (!preliminary.ok) {
-    return json({ ok: false, message: preliminary.message }, 400);
-  }
+    if (request.method !== "POST") {
+      return json(
+        { ok: false, code: "METHOD_NOT_ALLOWED", message: "请求方法不允许。" },
+        405,
+      );
+    }
+    const session = await getSession(request, env);
+    if (!session) {
+      return json(
+        { ok: false, code: "AUTH_REQUIRED", message: "请先登录。" },
+        401,
+      );
+    }
+    if (!session.user.emailVerified) {
+      return json(
+        {
+          ok: false,
+          code: "EMAIL_NOT_VERIFIED",
+          message: "请先验证邮箱后再上传附件。",
+        },
+        403,
+      );
+    }
+    const limited = await consumeRateLimit(env.FEDIFY_KV, {
+      scope: "upload",
+      subject: session.user.id,
+      rule: rateLimitRules.upload,
+    });
+    if (!limited.allowed) return rateLimitResponse(limited.retryAfter);
+    const store = createMediaStoreFromEnv(env);
+    if (!store) {
+      return json(
+        {
+          ok: false,
+          code: "MEDIA_STORAGE_UNAVAILABLE",
+          message:
+            "媒体存储未配置。请设置 S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY。",
+        },
+        503,
+      );
+    }
 
-  const bytes = await file.arrayBuffer();
-  try {
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return json(
+        { ok: false, code: "INVALID_MULTIPART", message: "无法解析上传内容。" },
+        400,
+      );
+    }
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      return json(
+        { ok: false, code: "FILE_REQUIRED", message: "请选择要上传的文件。" },
+        400,
+      );
+    }
+    const contentType = file.type || "application/octet-stream";
+    const preliminary = validateUploadFile({
+      contentType,
+      byteSize: file.size,
+      filename: file.name || "upload.bin",
+    });
+    if (!preliminary.ok) {
+      return json(
+        { ok: false, code: "INVALID_FILE", message: preliminary.message },
+        400,
+      );
+    }
+
+    const bytes = await file.arrayBuffer();
     const stored = await storeUploadedMedia({
       database: env.DB,
       store,
@@ -75,7 +101,10 @@ export async function handleMediaUpload(request: Request, env: Env) {
       bytes,
     });
     if (!stored.ok) {
-      return json({ ok: false, message: stored.message }, 400);
+      return json(
+        { ok: false, code: "INVALID_FILE", message: stored.message },
+        400,
+      );
     }
     return json({
       ok: true,
@@ -91,7 +120,10 @@ export async function handleMediaUpload(request: Request, env: Env) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "上传到对象存储失败。";
-    return json({ ok: false, message }, 502);
+    console.error("Media upload failed", {
+      error: error instanceof Error ? error.name : "unknown",
+    });
+    return json({ ok: false, code: "UPLOAD_FAILED", message }, 502);
   }
 }
 

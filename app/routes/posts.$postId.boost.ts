@@ -1,6 +1,6 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/posts.$postId.boost";
-import { getSession } from "@/modules/identity/auth.server";
+import { requireVerifiedSession } from "@/modules/identity/auth.server";
 import { isSafeQuoteUri } from "@/modules/forum/p2";
 import {
   createAnnounceActivity,
@@ -8,8 +8,15 @@ import {
 } from "@/modules/federation/outbox";
 
 export async function action({ params, request, context }: Route.ActionArgs) {
-  const session = await getSession(request, context.cloudflare.env);
-  if (!session) throw redirect("/auth/login");
+  const session = await requireVerifiedSession(
+    request,
+    context.cloudflare.env,
+  ).catch((error) => {
+    if (error instanceof Response && error.status === 401) {
+      throw redirect("/auth/login");
+    }
+    throw error;
+  });
   const post = await context.cloudflare.env.DB.prepare(
     "SELECT posts.thread_id AS threadId, federation_object_id AS objectUri, posts.visibility, boards.visibility AS boardVisibility FROM posts INNER JOIN threads ON threads.id = posts.thread_id INNER JOIN boards ON boards.id = threads.board_id WHERE posts.id = ? AND posts.state = 'published'",
   )

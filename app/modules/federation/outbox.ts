@@ -32,6 +32,11 @@ type PostOutboxInput = {
     closesAt: string | null;
     options: readonly string[];
   };
+  quote?: {
+    uri: string;
+    html?: string | null;
+    title?: string | null;
+  } | null;
   publication?: FederationPostPublication;
 };
 
@@ -220,6 +225,11 @@ async function publicPostWithAttachments(
       closesAt: string | null;
       options: readonly string[];
     };
+    quote?: {
+      uri: string;
+      html?: string | null;
+      title?: string | null;
+    } | null;
   },
 ) {
   const media = await resolveNoteMedia(database, {
@@ -284,13 +294,15 @@ async function publicPostWithAttachments(
     attachments: mediaRecordsToNoteAttachments(origin, media),
     hashtags: derived?.hashtags ?? tags.results,
     mentions: mentionRows?.results ?? mentions.results,
-    quote: quote
-      ? {
-          uri: quote.uri,
-          html: quote.html ?? undefined,
-          title: quote.title ?? undefined,
-        }
-      : null,
+    quote:
+      options.quote ??
+      (quote
+        ? {
+            uri: quote.uri,
+            html: quote.html ?? undefined,
+            title: quote.title ?? undefined,
+          }
+        : null),
     poll: options.poll
       ? {
           multiple: options.poll.multiple,
@@ -388,6 +400,7 @@ export async function publicPostOutboxStatement(
         attachmentIds: input.attachmentIds,
         markdown: input.markdown,
         poll: input.poll,
+        quote: input.quote,
       },
     ),
   );
@@ -447,6 +460,7 @@ export async function publicPostUpdateOutboxStatements(
         attachmentIds: input.attachmentIds,
         markdown: input.markdown,
         poll: input.poll,
+        quote: input.quote,
       },
     ),
   );

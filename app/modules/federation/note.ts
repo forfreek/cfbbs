@@ -11,7 +11,7 @@ export type PublicPost = {
   attachments?: NoteAttachmentJson[];
   hashtags?: readonly { tag: string; name?: string }[];
   mentions?: readonly { href: string; name: string }[];
-  quote?: { uri: string; html?: string; title?: string } | null;
+  quote?: { uri: string; html?: string | null; title?: string | null } | null;
   poll?: {
     multiple: boolean;
     options: readonly { name: string; votesCount?: number }[];

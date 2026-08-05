@@ -252,6 +252,34 @@ export async function getSession(
     headers: request.headers,
   });
   if (!session) return null;
-  const status = await loadAccountStatus(environment.DB, session.user.id);
-  return status === "active" ? session : null;
+  const account = await environment.DB.prepare(
+    "SELECT status, email_verified AS emailVerified FROM user WHERE id = ? LIMIT 1",
+  )
+    .bind(session.user.id)
+    .first<{ status: string; emailVerified: number | boolean }>();
+  const status =
+    account?.status ??
+    (await loadAccountStatus(environment.DB, session.user.id));
+  if (status !== "active") return null;
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      emailVerified: Boolean(
+        account?.emailVerified ?? session.user.emailVerified,
+      ),
+    },
+  };
+}
+
+export async function requireVerifiedSession(
+  request: Request,
+  environment: AuthEnvironment,
+) {
+  const session = await getSession(request, environment);
+  if (!session) throw new Response("请先登录。", { status: 401 });
+  if (!session.user.emailVerified) {
+    throw new Response("请先验证邮箱后再进行此操作。", { status: 403 });
+  }
+  return session;
 }

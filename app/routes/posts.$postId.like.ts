@@ -9,7 +9,7 @@ import { createNotification } from "@/modules/forum/notifications/service";
 import { loadForumBoard } from "@/modules/forum/read.server";
 import { togglePostLike } from "@/modules/forum/posts/likes";
 import { toggleOutboundLike } from "@/modules/federation/likes";
-import { getSession } from "@/modules/identity/auth.server";
+import { requireVerifiedSession } from "@/modules/identity/auth.server";
 
 type LikeablePost = {
   id: string;
@@ -47,8 +47,15 @@ async function loadRemoteLikeDelivery(database: D1Database, actorId: string) {
 }
 
 export async function action({ params, request, context }: Route.ActionArgs) {
-  const session = await getSession(request, context.cloudflare.env);
-  if (!session) throw redirect("/auth/login");
+  const session = await requireVerifiedSession(
+    request,
+    context.cloudflare.env,
+  ).catch((error) => {
+    if (error instanceof Response && error.status === 401) {
+      throw redirect("/auth/login");
+    }
+    throw error;
+  });
 
   const post = await loadLikeablePost(
     context.cloudflare.env.DB,

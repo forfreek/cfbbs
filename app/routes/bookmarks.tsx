@@ -19,6 +19,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (!session) throw redirect("/auth/login");
   const cursorValue = new URL(request.url).searchParams.get("cursor");
   const folderId = new URL(request.url).searchParams.get("folder");
+  const error = new URL(request.url).searchParams.get("error");
   const cursor = decodeBookmarkCursor(cursorValue);
   if (cursorValue !== null && !cursor) {
     throw new Response("Invalid cursor", { status: 400 });
@@ -81,10 +82,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     })),
     nextCursor: page.nextCursor,
     folderId,
+    error,
   };
 }
 
 export default function BookmarksPage({ loaderData }: Route.ComponentProps) {
+  const folderId = loaderData.folderId;
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <div className="flex items-baseline justify-between gap-4">
@@ -104,6 +107,15 @@ export default function BookmarksPage({ loaderData }: Route.ComponentProps) {
             action="/bookmarks/folders"
             className="flex gap-2"
           >
+            <input
+              type="hidden"
+              name="returnTo"
+              value={
+                folderId
+                  ? `/bookmarks?folder=${encodeURIComponent(folderId)}`
+                  : "/bookmarks"
+              }
+            />
             <input
               name="name"
               required
@@ -130,6 +142,14 @@ export default function BookmarksPage({ loaderData }: Route.ComponentProps) {
           </div>
         ) : null}
       </section>
+      {loaderData.error ? (
+        <p
+          role="alert"
+          className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+        >
+          {loaderData.error}
+        </p>
+      ) : null}
       {loaderData.bookmarks.length === 0 ? (
         <p className="mt-10 rounded-lg border border-dashed p-8 text-center text-sm text-slate-500">
           还没有收藏帖子。
@@ -173,6 +193,15 @@ export default function BookmarksPage({ loaderData }: Route.ComponentProps) {
                 className="mt-4"
               >
                 <input type="hidden" name="bookmarked" value="false" />
+                <input
+                  type="hidden"
+                  name="returnTo"
+                  value={
+                    folderId
+                      ? `/bookmarks?folder=${encodeURIComponent(folderId)}`
+                      : "/bookmarks"
+                  }
+                />
                 <button className="text-sm text-slate-600 hover:text-red-700">
                   取消收藏
                 </button>
@@ -186,6 +215,15 @@ export default function BookmarksPage({ loaderData }: Route.ComponentProps) {
                       action="/bookmarks/folders"
                     >
                       <input type="hidden" name="intent" value="move" />
+                      <input
+                        type="hidden"
+                        name="returnTo"
+                        value={
+                          folderId
+                            ? `/bookmarks?folder=${encodeURIComponent(folderId)}`
+                            : "/bookmarks"
+                        }
+                      />
                       <input type="hidden" name="folderId" value={folder.id} />
                       <input
                         type="hidden"

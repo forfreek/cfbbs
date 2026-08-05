@@ -10,8 +10,8 @@ import {
 } from "@/modules/media";
 import { loadMentionedUserIds } from "@/modules/forum/mentions";
 import { listThreadSubscriptionRecipients } from "@/modules/forum/subscriptions";
-import { syncPostContentMetadata } from "@/modules/forum/content";
-import { createPoll } from "@/modules/forum/p2";
+import { contentMetadataStatements } from "@/modules/forum/content";
+import { pollInsertStatements } from "@/modules/forum/p2";
 
 export type NewReply = {
   postId: string;
@@ -28,9 +28,41 @@ export type NewReply = {
     closesAt: string | null;
     options: readonly string[];
   };
+  quote?: {
+    targetPostId: string | null;
+    targetUri: string;
+    snapshotHtml?: string | null;
+    snapshotTitle?: string | null;
+  } | null;
 };
 
 export async function createReply(database: D1Database, input: NewReply) {
+  if (input.quote && input.visibility !== "public") {
+    throw new Error("私密帖子不能包含公开引用。");
+  }
+  const existingStatement = database
+    .prepare(
+      "SELECT id, thread_id AS threadId, author_user_id AS authorUserId FROM posts WHERE id = ? LIMIT 1",
+    )
+    .bind(input.postId) as unknown as {
+    first?: <T>() => Promise<T | null>;
+  };
+  const existing = existingStatement.first
+    ? await existingStatement.first<{
+        id: string;
+        threadId: string;
+        authorUserId: string | null;
+      }>()
+    : null;
+  if (existing) {
+    if (
+      existing.threadId === input.threadId &&
+      existing.authorUserId === input.authorUserId
+    ) {
+      return { postId: existing.id, duplicate: true as const };
+    }
+    throw new Error("帖子提交标识已被使用。");
+  }
   const thread = await database
     .prepare(
       "SELECT threads.is_locked, first_post.author_user_id AS firstPostAuthorUserId FROM threads INNER JOIN posts AS first_post ON first_post.id = threads.first_post_id WHERE threads.id = ?",
@@ -67,9 +99,21 @@ export async function createReply(database: D1Database, input: NewReply) {
     attachmentIds,
     markdown: input.markdown,
     poll: input.poll,
+    quote: input.quote
+      ? {
+          uri: input.quote.targetUri,
+          html: input.quote.snapshotHtml,
+          title: input.quote.snapshotTitle,
+        }
+      : null,
     publication: input.federation,
   });
   const mentionedUserIds = await loadMentionedUserIds(database, input.markdown);
+  const metadata = await contentMetadataStatements(database, {
+    postId: input.postId,
+    markdown: input.markdown,
+    createdAt: now,
+  });
   const subscriptionRecipients = await listThreadSubscriptionRecipients(
     database,
     input.threadId,
@@ -182,12 +226,31 @@ export async function createReply(database: D1Database, input: NewReply) {
       : []),
     ...notificationStatements,
     ...(outbox ? [outbox] : []),
+    ...metadata.statements,
+    ...(input.quote
+      ? [
+          database
+            .prepare(
+              "INSERT OR IGNORE INTO post_quotes (id, post_id, target_post_id, target_uri, snapshot_html, snapshot_title, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(
+              crypto.randomUUID(),
+              input.postId,
+              input.quote.targetPostId,
+              input.quote.targetUri,
+              input.quote.snapshotHtml ?? null,
+              input.quote.snapshotTitle ?? null,
+              now,
+            ),
+        ]
+      : []),
+    ...(input.poll
+      ? pollInsertStatements(database, {
+          postId: input.postId,
+          ...input.poll,
+          createdAt: now,
+        })
+      : []),
   ]);
-  await syncPostContentMetadata(database, {
-    postId: input.postId,
-    markdown: input.markdown,
-    createdAt: now,
-  });
-  if (input.poll)
-    await createPoll(database, { postId: input.postId, ...input.poll });
+  return { postId: input.postId, duplicate: false as const };
 }

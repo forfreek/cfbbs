@@ -16,7 +16,8 @@ import { MediaGallery } from "./media-gallery";
 type MarkdownPreviewResponse =
   { ok: true; html: string } | { ok: false; message: string };
 type MediaUploadResponse =
-  { ok: true; media: MediaAttachmentView } | { ok: false; message: string };
+  | { ok: true; media: MediaAttachmentView }
+  | { ok: false; code?: string; message?: string };
 
 export function MarkdownEditor({
   defaultValue = "",
@@ -188,14 +189,30 @@ export function MarkdownEditor({
           }));
       };
       xhr.onload = () => {
-        try {
-          const payload = JSON.parse(xhr.responseText) as MediaUploadResponse;
-          if (xhr.status >= 200 && xhr.status < 300 && payload.ok)
-            resolve(payload.media);
-          else reject(new Error(payload.ok ? "上传失败。" : payload.message));
-        } catch {
-          reject(new Error("上传响应无效。"));
+        const contentType = xhr.getResponseHeader("content-type") ?? "";
+        let payload: MediaUploadResponse | null = null;
+        if (contentType.includes("application/json")) {
+          try {
+            payload = JSON.parse(xhr.responseText) as MediaUploadResponse;
+          } catch {
+            payload = null;
+          }
         }
+        if (xhr.status >= 200 && xhr.status < 300 && payload?.ok) {
+          resolve(payload.media);
+          return;
+        }
+        const message =
+          payload && !payload.ok && payload.message
+            ? payload.message
+            : xhr.status === 401
+              ? "请先登录后再上传附件。"
+              : xhr.status === 403
+                ? "请先验证邮箱后再上传附件。"
+                : xhr.status === 429
+                  ? "上传过于频繁，请稍后再试。"
+                  : `上传服务暂时不可用（HTTP ${xhr.status || 0}）。`;
+        reject(new Error(message));
       };
       xhr.onerror = () => reject(new Error("上传失败，请稍后重试。"));
       xhr.onloadend = () =>

@@ -10,6 +10,7 @@ import {
 } from "@/modules/forum/content";
 import { noteObject } from "@/modules/federation/note";
 import { parseRemoteNoteMetadata } from "@/modules/federation/p2";
+import { resolveQuoteTarget } from "@/modules/forum/quotes";
 
 describe("P2 content parsing", () => {
   it("extracts tags and mentions without scanning code or link URLs", () => {
@@ -87,5 +88,18 @@ describe("P2 content parsing", () => {
       multiple: false,
       options: ["yes", "no"],
     });
+  });
+
+  it("rejects unsafe quote targets before touching the database", async () => {
+    const database = {
+      prepare() {
+        throw new Error("database should not be queried");
+      },
+    } as unknown as D1Database;
+    await expect(
+      resolveQuoteTarget(database, {
+        targetUri: "http://127.0.0.1/private",
+      }),
+    ).resolves.toMatchObject({ ok: false });
   });
 });
