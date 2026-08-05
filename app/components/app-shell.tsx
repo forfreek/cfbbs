@@ -208,6 +208,19 @@ export function AppShell({
           <Link onClick={() => setMobileOpen(false)} to="/notifications">
             {t("notifications")}
           </Link>
+          {session ? (
+            <>
+              <Link
+                onClick={() => setMobileOpen(false)}
+                to="/settings/security"
+              >
+                安全
+              </Link>
+              <Form method="post" action="/auth/logout">
+                <button type="submit">退出</button>
+              </Form>
+            </>
+          ) : null}
         </nav>
       ) : null}
       <div className="app-shell__body">{children}</div>
