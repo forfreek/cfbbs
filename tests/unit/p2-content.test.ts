@@ -101,5 +101,10 @@ describe("P2 content parsing", () => {
         targetUri: "http://127.0.0.1/private",
       }),
     ).resolves.toMatchObject({ ok: false });
+    await expect(
+      resolveQuoteTarget(database, {
+        targetUri: "https://127.0.0.1/private",
+      }),
+    ).resolves.toMatchObject({ ok: false });
   });
 });

@@ -77,15 +77,14 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 }
 
 export async function action({ params, request, context }: Route.ActionArgs) {
-  await requireVerifiedSession(
-    request,
-    context.cloudflare.env,
-  ).catch((error) => {
-    if (error instanceof Response && error.status === 401) {
-      throw redirect("/auth/login");
-    }
-    throw error;
-  });
+  await requireVerifiedSession(request, context.cloudflare.env).catch(
+    (error) => {
+      if (error instanceof Response && error.status === 401) {
+        throw redirect("/auth/login");
+      }
+      throw error;
+    },
+  );
   const { post, isFirstPost } = await editablePostData(
     request,
     context.cloudflare.env,

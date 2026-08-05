@@ -3,6 +3,7 @@ import {
   validatePollVote,
   validateReactionEmoji,
 } from "./content";
+import { isSafeRemoteUrl } from "@/modules/federation/remote-url";
 
 export type PollView = {
   postId: string;
@@ -290,12 +291,8 @@ export async function moveBookmark(
 export function isSafeQuoteUri(uri: string, origin?: string) {
   try {
     const url = new URL(uri);
-    if (url.protocol !== "https:") return false;
-    return (
-      !origin ||
-      url.origin === new URL(origin).origin ||
-      url.hostname.length > 0
-    );
+    if (origin && url.origin === new URL(origin).origin) return true;
+    return isSafeRemoteUrl(uri);
   } catch {
     return false;
   }
