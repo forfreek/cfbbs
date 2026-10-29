@@ -1,0 +1,32 @@
+name: Deploy test Worker
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: cfbbs-test-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.0
+      - run: pnpm install --frozen-lockfile
+      - name: Apply test database migrations
+        run: pnpm exec wrangler d1 migrations apply cfbbs-test-db --env test --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Deploy test Worker
+        run: pnpm deploy:test
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
