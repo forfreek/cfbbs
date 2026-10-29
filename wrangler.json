@@ -83,8 +83,8 @@
         "crons": ["*/5 * * * *", "0 3 * * *"]
       },
       "vars": {
-        "APP_ORIGIN": "https://cfbbs-test.workers.dev",
-        "EMAIL_MODE": "http",
+        "APP_ORIGIN": "https://cfbbs-test.wayoute.workers.dev",
+        "EMAIL_MODE": "disabled",
         "EMAIL_FROM": "cfbbs-test@lukelzlz.top",
         "EMAIL_GATEWAY_URL": "https://mail.s.lukelzlz.top/email-gateway/",
         "VAPID_PUBLIC_KEY": "BHUL5gzgiZ9BRBY0kkru3HfH8hSPMOKWw3wyThsPlZQ60HoHPnSxBR81PDS93kWwz-UNOHSiFbmcM-U5XMSFC5s",
@@ -95,3 +95,4 @@
     }
   }
 }
+
