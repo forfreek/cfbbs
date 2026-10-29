@@ -3,9 +3,7 @@
   "name": "cfbbs",
   "main": "./workers/app.ts",
   "compatibility_date": "2025-10-08",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
+  "compatibility_flags": ["nodejs_compat"],
   "d1_databases": [
     {
       "binding": "DB",
@@ -36,10 +34,7 @@
     ]
   },
   "triggers": {
-    "crons": [
-      "*/5 * * * *",
-      "0 3 * * *"
-    ]
+    "crons": ["*/5 * * * *", "0 3 * * *"]
   },
   "observability": {
     "enabled": true
@@ -85,10 +80,7 @@
         ]
       },
       "triggers": {
-        "crons": [
-          "*/5 * * * *",
-          "0 3 * * *"
-        ]
+        "crons": ["*/5 * * * *", "0 3 * * *"]
       },
       "vars": {
         "APP_ORIGIN": "https://cfbbs-test.workers.dev",
