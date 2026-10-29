@@ -6,3 +6,4 @@ worker-configuration.d.ts
 playwright-report
 test-results
 wrangler.json
+app/modules/email/service.ts
