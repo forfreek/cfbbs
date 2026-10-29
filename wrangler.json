@@ -64,6 +64,12 @@
           "id": "c614727d995b43b3823a5a0b7fc3db8d"
         }
       ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA_BUCKET",
+          "bucket_name": "cfbbs-media"
+        }
+      ],
       "queues": {
         "producers": [
           {

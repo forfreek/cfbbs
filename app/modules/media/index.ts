@@ -11,6 +11,7 @@ export {
 } from "./remote";
 export {
   createMediaStoreFromEnv,
+  createR2MediaStore,
   createS3MediaStore,
   parseS3MediaConfig,
   type MediaBlobStore,
