@@ -5,3 +5,4 @@ node_modules
 worker-configuration.d.ts
 playwright-report
 test-results
+wrangler.json
