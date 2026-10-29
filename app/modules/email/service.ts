@@ -5,6 +5,15 @@ export type TransactionalEmailKind =
 
 type EmailEnvironment = {
   EMAIL_MODE?: string;
+  EMAIL?: {
+    send(message: {
+      to: string;
+      from: string;
+      subject: string;
+      text?: string;
+      html?: string;
+    }): Promise<{ messageId: string }>;
+  };
   EMAIL_GATEWAY_URL?: string;
   EMAIL_GATEWAY_TOKEN?: string;
   EMAIL_FROM?: string;
@@ -102,7 +111,43 @@ export async function sendTransactionalEmail(env: Env, input: EmailInput) {
     return { ok: true as const, skipped: true };
   }
 
-  if (mode !== "http") throw new Error("EMAIL_MODE must be disabled or http.");
+  if (mode === "cloudflare") {
+    const sender = config.EMAIL_FROM?.trim();
+    if (!config.EMAIL || !sender)
+      throw new Error("Cloudflare Email binding is not configured.");
+    const limit = await consumeRateLimit(env.FEDIFY_KV, {
+      scope: "email",
+      subject: recipientHash,
+      rule: rateLimitRules.email,
+    });
+    if (!limit.allowed) throw new Error("Email rate limit exceeded.");
+    const copy = defaultCopy(input);
+    try {
+      await config.EMAIL.send({
+        to: input.to,
+        from: sender,
+        subject: input.subject ?? copy.subject,
+        text: input.text ?? copy.text,
+        html: input.html ?? copy.html,
+      });
+      await env.DB.prepare(
+        "UPDATE email_deliveries SET status = 'sent', error = NULL, sent_at = ? WHERE request_id = ?",
+      )
+        .bind(new Date().toISOString(), requestId)
+        .run();
+      return { ok: true as const };
+    } catch (error) {
+      await env.DB.prepare(
+        "UPDATE email_deliveries SET status = 'failed', error = ? WHERE request_id = ?",
+      )
+        .bind(redactError(error), requestId)
+        .run();
+      throw error;
+    }
+  }
+
+  if (mode !== "http")
+    throw new Error("EMAIL_MODE must be disabled, http, or cloudflare.");
   const url = config.EMAIL_GATEWAY_URL?.trim();
   const token = config.EMAIL_GATEWAY_TOKEN?.trim();
   const from = config.EMAIL_FROM?.trim();
@@ -162,3 +207,4 @@ export async function sendTransactionalEmail(env: Env, input: EmailInput) {
     clearTimeout(timer);
   }
 }
+
