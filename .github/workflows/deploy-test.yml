@@ -12,12 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
       - uses: pnpm/action-setup@v6
         with:
           version: 11.15.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
       - run: pnpm install --frozen-lockfile
       - name: Apply test database migrations
         run: pnpm exec wrangler d1 migrations apply cfbbs-test-db --env test --remote
