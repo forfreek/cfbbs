@@ -64,12 +64,6 @@
           "id": "c614727d995b43b3823a5a0b7fc3db8d"
         }
       ],
-      "r2_buckets": [
-        {
-          "binding": "MEDIA_BUCKET",
-          "bucket_name": "cfbbs-media"
-        }
-      ],
       "queues": {
         "producers": [
           {
@@ -90,6 +84,10 @@
       },
       "vars": {
         "APP_ORIGIN": "https://cfbbs-test.wayoute.workers.dev",
+        "S3_ENDPOINT": "https://152fd11a0e36927bf20f6fc9ab2bc4fa.r2.cloudflarestorage.com",
+        "S3_BUCKET": "cfbbs-media",
+        "S3_REGION": "auto",
+        "S3_FORCE_PATH_STYLE": "true",
         "EMAIL_MODE": "cloudflare",
         "EMAIL_FROM": "noreply@mail.cloudflareforum.us.ci",
         "EMAIL_GATEWAY_URL": "https://mail.s.lukelzlz.top/email-gateway/",

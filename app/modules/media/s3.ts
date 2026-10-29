@@ -30,27 +30,6 @@ export type MediaBlobStore = {
   delete(key: string): Promise<void>;
 };
 
-export function createR2MediaStore(bucket: R2Bucket): MediaBlobStore {
-  return {
-    async put(key, bytes, options) {
-      await bucket.put(key, bytes, {
-        httpMetadata: {
-          contentType: options?.contentType,
-          contentDisposition: options?.contentDisposition,
-        },
-        customMetadata: options?.metadata,
-      });
-    },
-    async get(key) {
-      const object = await bucket.get(key);
-      return object ? object.arrayBuffer() : null;
-    },
-    async delete(key) {
-      await bucket.delete(key);
-    },
-  };
-}
-
 function encodeRfc3986(value: string) {
   return encodeURIComponent(value).replace(
     /[!'()*]/g,
@@ -310,7 +289,6 @@ export function createS3MediaStore(config: S3MediaConfig): MediaBlobStore {
 }
 
 export function createMediaStoreFromEnv(env: Env): MediaBlobStore | null {
-  if (env.MEDIA_BUCKET) return createR2MediaStore(env.MEDIA_BUCKET);
   const config = parseS3MediaConfig(env as unknown as S3Environment);
   if (!config) return null;
   return createS3MediaStore(config);

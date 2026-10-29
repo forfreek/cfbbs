@@ -55,7 +55,8 @@ export async function handleMediaUpload(request: Request, env: Env) {
         {
           ok: false,
           code: "MEDIA_STORAGE_UNAVAILABLE",
-          message: "媒体存储未配置。请绑定 Cloudflare R2 存储桶 MEDIA_BUCKET。",
+          message:
+            "媒体存储未配置。请设置 S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY。",
         },
         503,
       );
