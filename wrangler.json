@@ -3,7 +3,9 @@
   "name": "cfbbs",
   "main": "./workers/app.ts",
   "compatibility_date": "2025-10-08",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "d1_databases": [
     {
       "binding": "DB",
@@ -34,7 +36,10 @@
     ]
   },
   "triggers": {
-    "crons": ["*/5 * * * *", "0 3 * * *"]
+    "crons": [
+      "*/5 * * * *",
+      "0 3 * * *"
+    ]
   },
   "observability": {
     "enabled": true
@@ -54,14 +59,14 @@
         {
           "binding": "DB",
           "database_name": "cfbbs-test-db",
-          "database_id": "ebaf629b-f78c-4a28-bdbf-3192214c4a86",
+          "database_id": "00211ed4-718f-4ee0-835d-1276301e8ea7",
           "migrations_dir": "drizzle"
         }
       ],
       "kv_namespaces": [
         {
           "binding": "FEDIFY_KV",
-          "id": "ce61356028874cbaa7735c49e75ace04"
+          "id": "c614727d995b43b3823a5a0b7fc3db8d"
         }
       ],
       "queues": {
@@ -80,16 +85,13 @@
         ]
       },
       "triggers": {
-        "crons": ["*/5 * * * *", "0 3 * * *"]
+        "crons": [
+          "*/5 * * * *",
+          "0 3 * * *"
+        ]
       },
-      "routes": [
-        {
-          "pattern": "cfbbs-test.s.lukelzlz.top",
-          "custom_domain": true
-        }
-      ],
       "vars": {
-        "APP_ORIGIN": "https://cfbbs-test.s.lukelzlz.top",
+        "APP_ORIGIN": "https://cfbbs-test.workers.dev",
         "EMAIL_MODE": "http",
         "EMAIL_FROM": "cfbbs-test@lukelzlz.top",
         "EMAIL_GATEWAY_URL": "https://mail.s.lukelzlz.top/email-gateway/",
@@ -101,3 +103,4 @@
     }
   }
 }
+
